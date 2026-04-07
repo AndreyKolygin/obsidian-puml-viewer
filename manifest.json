@@ -1,0 +1,9 @@
+{
+  "id": "puml-viewer",
+  "name": "PUML Viewer",
+  "version": "0.2.0",
+  "minAppVersion": "1.5.0",
+  "description": "Render .puml files as PlantUML diagrams inside Obsidian.",
+  "author": "Andrei Kolygin",
+  "isDesktopOnly": false
+}

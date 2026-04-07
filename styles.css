@@ -1,0 +1,361 @@
+.puml-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 6px;
+  padding: 6px;
+}
+
+.puml-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.puml-viewer-toolbar button {
+  cursor: pointer;
+}
+
+.puml-toolbar-icon-btn {
+  width: 30px;
+  height: 28px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.puml-toolbar-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+
+.puml-viewer-toolbar button.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.puml-viewer-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.puml-viewer-image-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.puml-viewer-image-wrap.is-pan-enabled {
+  cursor: grab;
+  user-select: none;
+}
+
+.puml-viewer-image-wrap.is-pan-enabled.is-panning {
+  cursor: grabbing;
+}
+
+.puml-viewer-image-wrap--view {
+  background: #ffffff;
+}
+
+.puml-viewer-content-host {
+  height: 100%;
+  min-height: 0;
+}
+
+.puml-viewer-content-host--editor {
+  display: flex;
+}
+
+.puml-viewer-image {
+  display: block;
+  max-width: none;
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+
+.puml-viewer-render-root {
+  width: fit-content;
+}
+
+.puml-viewer-error {
+  color: var(--text-error);
+  white-space: pre-wrap;
+}
+
+.puml-viewer-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+.puml-viewer-editor-shell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.puml-viewer-editor-gutter {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  padding: 10px 8px;
+  border-right: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  text-align: right;
+  user-select: none;
+  pointer-events: none;
+  overflow: hidden;
+  line-height: 1.5;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  background: var(--background-secondary);
+}
+
+.puml-viewer-editor-line {
+  height: 1.5em;
+}
+
+.puml-viewer-editor-shell .puml-viewer-editor {
+  border: none;
+  border-radius: 0;
+}
+
+.puml-embed-block {
+  position: relative;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  padding-top: 24px;
+  background: transparent;
+  overflow: auto;
+}
+
+.puml-embed-actions {
+  position: absolute;
+  top: 2px;
+  left: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 1;
+}
+
+.puml-embed-toggle,
+.puml-embed-zoom-btn {
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.puml-embed-actions button {
+  min-width: 30px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.puml-embed-actions button svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  pointer-events: none;
+}
+
+.puml-embed-actions button.is-hidden {
+  display: none;
+}
+
+.puml-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--background-primary) 55%, black 45%);
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 12px;
+}
+
+.puml-zoom-panel {
+  width: 100%;
+  height: 100%;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.puml-zoom-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+}
+
+.puml-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.puml-zoom-close {
+  justify-self: end;
+}
+
+.puml-zoom-content {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.puml-zoom-content.is-panning {
+  cursor: grabbing;
+}
+
+.puml-zoom-canvas {
+  width: fit-content;
+  min-width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.puml-zoom-image {
+  display: block;
+  height: auto;
+}
+
+.puml-embed-diagram img,
+.puml-embed-diagram svg,
+.puml-embed-image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.puml-embed-code {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: pre;
+  overflow: auto;
+}
+
+.puml-embed-code-content {
+  counter-reset: puml-line;
+  display: block;
+}
+
+.puml-embed-code-line {
+  display: block;
+  padding-left: 3.2em;
+  position: relative;
+}
+
+.puml-embed-code-line::before {
+  counter-increment: puml-line;
+  content: counter(puml-line);
+  position: absolute;
+  left: 0;
+  width: 2.6em;
+  color: var(--text-faint);
+  text-align: right;
+  padding-right: 0.6em;
+  pointer-events: none;
+}
+
+.puml-code-directive {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.theme-dark .puml-code-directive {
+  color: #f59e0b;
+}
+
+.puml-code-keyword {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.theme-dark .puml-code-keyword {
+  color: #60a5fa;
+}
+
+.puml-code-string {
+  color: #15803d;
+}
+
+.theme-dark .puml-code-string {
+  color: #86efac;
+}
+
+.puml-code-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.puml-embed-error {
+  color: var(--text-error);
+  white-space: pre-wrap;
+}
+
+.puml-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.puml-loading::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: puml-spin 0.8s linear infinite;
+}
+
+@keyframes puml-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

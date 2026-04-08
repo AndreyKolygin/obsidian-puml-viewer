@@ -67,19 +67,23 @@ Then enable the plugin in **Settings → Community plugins**.
 
 Basic block:
 
+~~~md
 ```plantuml
 @startuml
 Bob -> Alice: hello
 @enduml
 ```
+~~~
 
 Block with width hint:
 
+~~~md
 ```plantuml |500
 @startuml
 Bob -> Alice: hello
 @enduml
 ```
+~~~
 
 - `|500` means max diagram block width in pixels.
 - In rendered block, use:

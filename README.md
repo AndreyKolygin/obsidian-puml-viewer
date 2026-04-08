@@ -98,3 +98,11 @@ Bob -> Alice: hello
 - `Embedded block default view`: show diagram or code first
 - `Embedded diagram alignment`: `left` / `center` / `right` (default `center`)
   - Applied immediately in markdown preview without Obsidian restart
+
+## Disclosures
+
+- **Network usage**: plugin sends diagram source to the configured render server
+  (`PlantUML`, `Kroki`, or `Local`) to generate SVG/PNG/TXT output.
+- **Accounts / payments**: not required.
+- **Telemetry / ads**: none.
+- **External file access**: none outside Obsidian vault APIs.

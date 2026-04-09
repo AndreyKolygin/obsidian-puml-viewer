@@ -63,6 +63,14 @@ Then enable the plugin in **Settings → Community plugins**.
   - `Open current PUML in viewer`
 - Switch between `View` and `Edit` modes in the toolbar.
 
+The dedicated viewer gives you a diagram-first workspace for standalone `.puml` files, with quick switching back to the editable source when you need to adjust the markup.
+
+<img src="assets/screenshots/puml_01.png" width="900" alt="PUML file opened in Obsidian viewer" />
+
+Source editing stays in the same view, so you can iterate on PlantUML without leaving the file context.
+
+<img src="assets/screenshots/puml_02.png" width="900" alt="PUML source code editor inside Obsidian" />
+
 ### Markdown blocks
 
 Basic block:
@@ -90,6 +98,18 @@ Bob -> Alice: hello
   - `View Code` to toggle source/diagram
   - `Zoom` to open fullscreen overlay
   - save icon to choose `PNG` or `SVG`
+
+Rendered markdown blocks stay inside the note preview, which makes them usable for documentation, specs, and presentation notes without opening a separate file.
+
+<img src="assets/screenshots/puml_03.png" width="900" alt="Rendered PlantUML markdown block in note preview" />
+
+For larger diagrams, the fullscreen zoom overlay adds navigation controls and drag-to-pan, so dense schemes remain readable.
+
+<img src="assets/screenshots/puml_04.png" width="900" alt="Fullscreen zoom overlay for PlantUML diagram" />
+
+Export actions are available directly from the rendered block when you need to reuse the diagram outside Obsidian.
+
+<img src="assets/screenshots/puml_05.png" width="900" alt="Diagram export options in markdown block" />
 
 ## Settings
 

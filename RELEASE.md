@@ -1,6 +1,6 @@
 # Release Guide (Community Plugins)
 
-This project is prepared for release `0.2.2`.
+This project is prepared for release `0.2.3`.
 
 ## 1) Build
 
@@ -18,17 +18,17 @@ Release assets that must be attached to GitHub Release:
 
 ```bash
 git add .
-git commit -m "release: 0.2.2"
-git tag -a 0.2.2 -m "0.2.2"
+git commit -m "release: 0.2.3"
+git tag -a 0.2.3 -m "0.2.3"
 git push origin main --tags
 ```
 
 Important:
-- Tag name must exactly match `manifest.json` version (`0.2.2`).
+- Tag name must exactly match `manifest.json` version (`0.2.3`).
 
 ## 3) Create GitHub Release
 
-- Create release from tag `0.2.2`.
+- Create release from tag `0.2.3`.
 - Upload assets:
   - `main.js`
   - `manifest.json`
@@ -59,7 +59,7 @@ Replace:
 - Repository is public.
 - `manifest.json` has:
   - stable `id` (`puml-viewer`)
-  - `version` matching release tag (`0.2.2`)
+  - `version` matching release tag (`0.2.3`)
   - correct `minAppVersion`
 - `versions.json` is valid JSON.
 - `README.md` describes usage/settings.

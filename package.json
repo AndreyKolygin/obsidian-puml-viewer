@@ -1,8 +1,8 @@
 {
   "name": "obsidian-puml-viewer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
-  "description": "Obsidian plugin to render .puml files",
+  "description": "A plugin for Obsidian that renders PlantUML from .puml files and markdown code blocks.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

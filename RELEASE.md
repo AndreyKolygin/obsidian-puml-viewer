@@ -1,6 +1,6 @@
 # Release Guide (Community Plugins)
 
-This project is prepared for release `0.2.0`.
+This project is prepared for release `0.2.1`.
 
 ## 1) Build
 
@@ -18,17 +18,17 @@ Release assets that must be attached to GitHub Release:
 
 ```bash
 git add .
-git commit -m "release: 0.2.0"
-git tag -a 0.2.0 -m "0.2.0"
+git commit -m "release: 0.2.1"
+git tag -a 0.2.1 -m "0.2.1"
 git push origin main --tags
 ```
 
 Important:
-- Tag name must exactly match `manifest.json` version (`0.2.0`).
+- Tag name must exactly match `manifest.json` version (`0.2.1`).
 
 ## 3) Create GitHub Release
 
-- Create release from tag `0.2.0`.
+- Create release from tag `0.2.1`.
 - Upload assets:
   - `main.js`
   - `manifest.json`
@@ -46,7 +46,7 @@ Add this entry to `community-plugins.json`:
   "id": "puml-viewer",
   "name": "PUML Viewer",
   "author": "Andrei Kolygin",
-  "description": "Render .puml files as PlantUML diagrams inside Obsidian.",
+  "description": "A plugin for Obsidian that renders PlantUML from .puml files and markdown code blocks.",
   "repo": "https://github.com/<your-user>/<your-repo>"
 }
 ```
@@ -59,7 +59,7 @@ Replace:
 - Repository is public.
 - `manifest.json` has:
   - stable `id` (`puml-viewer`)
-  - `version` matching release tag (`0.2.0`)
+  - `version` matching release tag (`0.2.1`)
   - correct `minAppVersion`
 - `versions.json` is valid JSON.
 - `README.md` describes usage/settings.

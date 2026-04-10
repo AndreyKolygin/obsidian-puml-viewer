@@ -86,7 +86,7 @@ export default class PUMLViewerPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-current-puml-in-viewer',
-      name: 'Open current PlantUML file in viewer',
+      name: 'Open current plantuml file in viewer',
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canOpen = !!file && file.extension === 'puml';
@@ -659,7 +659,7 @@ export default class PUMLViewerPlugin extends Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new Notice('PlantUML code copied.');
+          new Notice('Plantuml code copied.');
         } catch (error) {
           new Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -1158,11 +1158,11 @@ class PUMLViewerView extends ItemView {
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new Notice('PlantUML source saved.');
+      new Notice('Plantuml source saved.');
     } catch (error) {
       console.error(error);
       this.statusEl.setText('Save failed.');
-      new Notice('Failed to save PlantUML source.');
+      new Notice('Failed to save plantuml source.');
     }
   }
 
@@ -1172,7 +1172,7 @@ class PUMLViewerView extends ItemView {
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new Notice('PlantUML file is empty.');
+        new Notice('Plantuml file is empty.');
         return;
       }
 
@@ -1325,7 +1325,7 @@ class PUMLViewerView extends ItemView {
         `Failed to render diagram.\n\n${error instanceof Error ? error.message : String(error)}`,
       );
 
-      new Notice('PlantUML render failed.');
+      new Notice('Plantuml render failed.');
     }
   }
 
@@ -1512,14 +1512,14 @@ class PUMLViewerSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName('PlantUML viewer settings').setHeading();
+    new Setting(containerEl).setName('Plantuml viewer').setHeading();
 
     new Setting(containerEl)
       .setName('Server type')
       .setDesc('Choose which server URL to use for rendering.')
       .addDropdown((dropdown) =>
         dropdown
-          .addOption('plantuml', 'PlantUML')
+          .addOption('plantuml', 'Plantuml')
           .addOption('kroki', 'Kroki')
           .addOption('local', 'Local')
           .setValue(this.plugin.settings.serverType)
@@ -1530,7 +1530,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('PlantUML URL')
+      .setName('Plantuml url')
       .setDesc('Example: https://www.plantuml.com/plantuml')
       .addText((text) =>
         text
@@ -1557,10 +1557,10 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Local URL')
-      .setDesc('Example: http://localhost:8000.')
+      .setDesc('For example: http://localhost:8000.')
       .addText((text) =>
         text
-          .setPlaceholder('http://localhost:8000')
+          .setPlaceholder('For example: http://localhost:8000')
           .setValue(this.plugin.settings.localServerUrl)
           .onChange(async (value) => {
             this.plugin.settings.localServerUrl = value.trim();
@@ -1594,7 +1594,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded block default view')
-      .setDesc('Choose what to show first in Markdown PlantUML blocks.')
+      .setDesc('Choose what to show first in markdown plantuml blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('diagram', 'Diagram')
@@ -1608,7 +1608,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded diagram alignment')
-      .setDesc('Default alignment for diagram in a Markdown PlantUML block.')
+      .setDesc('Default alignment for diagram in a markdown plantuml block.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('left', 'Left')

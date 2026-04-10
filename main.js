@@ -4738,7 +4738,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     this.registerExtensions(["puml"], VIEW_TYPE_PUML);
     this.addCommand({
       id: "open-current-puml-in-viewer",
-      name: "Open current PlantUML file in viewer",
+      name: "Open current plantuml file in viewer",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         const canOpen = !!file && file.extension === "puml";
@@ -5237,7 +5237,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new import_obsidian.Notice("PlantUML code copied.");
+          new import_obsidian.Notice("Plantuml code copied.");
         } catch (error) {
           new import_obsidian.Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -5636,11 +5636,11 @@ ${error instanceof Error ? error.message : String(error)}`
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new import_obsidian.Notice("PlantUML source saved.");
+      new import_obsidian.Notice("Plantuml source saved.");
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Save failed.");
-      new import_obsidian.Notice("Failed to save PlantUML source.");
+      new import_obsidian.Notice("Failed to save plantuml source.");
     }
   }
   async exportDiagram(format) {
@@ -5648,7 +5648,7 @@ ${error instanceof Error ? error.message : String(error)}`
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new import_obsidian.Notice("PlantUML file is empty.");
+        new import_obsidian.Notice("Plantuml file is empty.");
         return;
       }
       const outputPath = (0, import_obsidian.normalizePath)(
@@ -5786,7 +5786,7 @@ ${error instanceof Error ? error.message : String(error)}`
 
 ${error instanceof Error ? error.message : String(error)}`
       );
-      new import_obsidian.Notice("PlantUML render failed.");
+      new import_obsidian.Notice("Plantuml render failed.");
     }
   }
   setZoom(value) {
@@ -5941,14 +5941,14 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("PlantUML viewer settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Plantuml viewer").setHeading();
     new import_obsidian.Setting(containerEl).setName("Server type").setDesc("Choose which server URL to use for rendering.").addDropdown(
-      (dropdown) => dropdown.addOption("plantuml", "PlantUML").addOption("kroki", "Kroki").addOption("local", "Local").setValue(this.plugin.settings.serverType).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("plantuml", "Plantuml").addOption("kroki", "Kroki").addOption("local", "Local").setValue(this.plugin.settings.serverType).onChange(async (value) => {
         this.plugin.settings.serverType = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("PlantUML URL").setDesc("Example: https://www.plantuml.com/plantuml").addText(
+    new import_obsidian.Setting(containerEl).setName("Plantuml url").setDesc("Example: https://www.plantuml.com/plantuml").addText(
       (text) => text.setPlaceholder("https://www.plantuml.com/plantuml").setValue(this.plugin.settings.plantumlServerUrl).onChange(async (value) => {
         this.plugin.settings.plantumlServerUrl = value.trim();
         await this.plugin.saveSettings();
@@ -5960,8 +5960,8 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Example: http://localhost:8000.").addText(
-      (text) => text.setPlaceholder("http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("For example: http://localhost:8000.").addText(
+      (text) => text.setPlaceholder("For example: http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
         this.plugin.settings.localServerUrl = value.trim();
         await this.plugin.saveSettings();
       })
@@ -5978,13 +5978,13 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in Markdown PlantUML blocks.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in markdown plantuml blocks.").addDropdown(
       (dropdown) => dropdown.addOption("diagram", "Diagram").addOption("code", "Code").setValue(this.plugin.settings.embeddedDefaultView).onChange(async (value) => {
         this.plugin.settings.embeddedDefaultView = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagram in a Markdown PlantUML block.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagram in a markdown plantuml block.").addDropdown(
       (dropdown) => dropdown.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(this.plugin.settings.embeddedDiagramAlign).onChange(async (value) => {
         this.plugin.settings.embeddedDiagramAlign = value;
         await this.plugin.saveSettings();

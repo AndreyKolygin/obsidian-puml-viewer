@@ -59,6 +59,22 @@ const ICONS = {
   exportAscii: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 6.5 19M12 5 17.5 19M8.4 14.5h7.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 } as const;
 
+function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
+  const parsed = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
+  if (parsed.querySelector('parsererror')) return null;
+  const svgEl = parsed.querySelector('svg');
+  if (!svgEl) return null;
+  const imported = document.importNode(svgEl, true);
+  return imported instanceof SVGSVGElement ? imported : null;
+}
+
+function setElementSvgIcon(element: HTMLElement, svgMarkup: string): void {
+  const svgEl = parseSvgMarkup(svgMarkup);
+  element.empty();
+  if (!svgEl) return;
+  element.appendChild(svgEl);
+}
+
 export default class PUMLViewerPlugin extends Plugin {
   settings!: PUMLViewerSettings;
 
@@ -70,7 +86,7 @@ export default class PUMLViewerPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-current-puml-in-viewer',
-      name: 'Open current PUML in viewer',
+      name: 'Open current PlantUML file in viewer',
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canOpen = !!file && file.extension === 'puml';
@@ -294,9 +310,9 @@ export default class PUMLViewerPlugin extends Plugin {
     const zoomBtn = actionsEl.createEl('button', { cls: 'puml-embed-zoom-btn' });
     const saveBtn = actionsEl.createEl('button', { cls: 'puml-embed-save-btn' });
     const copyBtn = actionsEl.createEl('button', { cls: 'puml-embed-copy-btn' });
-    zoomBtn.innerHTML = ICONS.zoom;
-    saveBtn.innerHTML = ICONS.save;
-    copyBtn.innerHTML = ICONS.copy;
+    setElementSvgIcon(zoomBtn, ICONS.zoom);
+    setElementSvgIcon(saveBtn, ICONS.save);
+    setElementSvgIcon(copyBtn, ICONS.copy);
     toggleBtn.setAttr('title', 'Toggle code/diagram');
     toggleBtn.setAttr('aria-label', 'Toggle code/diagram');
     zoomBtn.setAttr('title', 'Zoom overlay');
@@ -307,17 +323,16 @@ export default class PUMLViewerPlugin extends Plugin {
     copyBtn.setAttr('aria-label', 'Copy code');
     const diagramPane = container.createDiv({ cls: 'puml-embed-diagram' });
     if (widthHintPx) {
-      diagramPane.style.maxWidth = `${widthHintPx}px`;
-      if (this.settings.embeddedDiagramAlign === 'left') {
-        diagramPane.style.marginLeft = '0';
-        diagramPane.style.marginRight = 'auto';
-      } else if (this.settings.embeddedDiagramAlign === 'right') {
-        diagramPane.style.marginLeft = 'auto';
-        diagramPane.style.marginRight = '0';
-      } else {
-        diagramPane.style.marginLeft = 'auto';
-        diagramPane.style.marginRight = 'auto';
-      }
+      const align =
+        this.settings.embeddedDiagramAlign === 'left'
+          ? { 'margin-left': '0', 'margin-right': 'auto' }
+          : this.settings.embeddedDiagramAlign === 'right'
+            ? { 'margin-left': 'auto', 'margin-right': '0' }
+            : { 'margin-left': 'auto', 'margin-right': 'auto' };
+      diagramPane.setCssProps({
+        'max-width': `${widthHintPx}px`,
+        ...align,
+      });
     }
     const codePane = container.createEl('pre', { cls: 'puml-embed-code' });
     const codeEl = codePane.createEl('code', { cls: 'puml-embed-code-content' });
@@ -336,7 +351,7 @@ export default class PUMLViewerPlugin extends Plugin {
       if (showCode) {
         diagramPane.hide();
         codePane.show();
-        toggleBtn.innerHTML = ICONS.diagram;
+        setElementSvgIcon(toggleBtn, ICONS.diagram);
         toggleBtn.setAttr('title', 'Show diagram');
         toggleBtn.setAttr('aria-label', 'Show diagram');
         zoomBtn.addClass('is-hidden');
@@ -345,7 +360,7 @@ export default class PUMLViewerPlugin extends Plugin {
       } else {
         codePane.hide();
         diagramPane.show();
-        toggleBtn.innerHTML = ICONS.code;
+        setElementSvgIcon(toggleBtn, ICONS.code);
         toggleBtn.setAttr('title', 'Show code');
         toggleBtn.setAttr('aria-label', 'Show code');
         zoomBtn.removeClass('is-hidden');
@@ -426,9 +441,11 @@ export default class PUMLViewerPlugin extends Plugin {
       const clampZoom = (value: number) => Math.min(8, Math.max(0.1, Math.round(value * 100) / 100));
       const applyZoom = () => {
         if (!renderedEl || baseWidth <= 0) return;
-        renderedEl.style.maxWidth = 'none';
-        renderedEl.style.width = `${Math.max(1, Math.round(baseWidth * zoom))}px`;
-        renderedEl.style.height = 'auto';
+        renderedEl.setCssProps({
+          'max-width': 'none',
+          width: `${Math.max(1, Math.round(baseWidth * zoom))}px`,
+          height: 'auto',
+        });
       };
       const setZoom = (value: number) => {
         zoom = clampZoom(value);
@@ -539,10 +556,9 @@ export default class PUMLViewerPlugin extends Plugin {
 
           loadingEl.remove();
           const svgHost = document.createElement('div');
-          svgHost.innerHTML = response.text;
-          const svgEl = svgHost.querySelector('svg');
+          const svgEl = parseSvgMarkup(response.text);
           if (svgEl) {
-            svgEl.style.display = 'block';
+            svgEl.setCssProps({ display: 'block' });
             let baseSvgWidth = 0;
             try {
               const bbox = svgEl.getBBox();
@@ -554,20 +570,23 @@ export default class PUMLViewerPlugin extends Plugin {
               console.debug('Failed to crop SVG by bbox', error);
             }
 
-            renderedEl = svgEl as HTMLElement;
+            renderedEl = svgEl;
             const viewBoxWidth = baseSvgWidth || (svgEl.viewBox?.baseVal?.width ?? 0);
             const widthAttr = Number.parseFloat(svgEl.getAttribute('width') ?? '0');
             const measuredWidth = svgEl.getBoundingClientRect().width;
             baseWidth = viewBoxWidth || widthAttr || measuredWidth || 1000;
             fitToViewport();
             centerViewportOnce();
+            svgHost.appendChild(svgEl);
+          } else {
+            throw new Error('Response is not valid SVG content.');
           }
           canvasEl.appendChild(svgHost);
         } else {
           const img = document.createElement('img');
           img.className = 'puml-zoom-image';
           img.alt = 'PlantUML diagram';
-          img.style.display = 'none';
+          img.setCssProps({ display: 'none' });
           const objectUrl = await this.fetchPngObjectUrl(renderSource);
           img.src = objectUrl;
           canvasEl.appendChild(img);
@@ -579,7 +598,7 @@ export default class PUMLViewerPlugin extends Plugin {
               renderedEl = img;
               baseWidth = img.naturalWidth || img.getBoundingClientRect().width || 1000;
               fitToViewport();
-              img.style.display = 'block';
+              img.setCssProps({ display: 'block' });
               centerViewportOnce();
               URL.revokeObjectURL(objectUrl);
             },
@@ -640,7 +659,7 @@ export default class PUMLViewerPlugin extends Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new Notice('PlantUML code copied');
+          new Notice('PlantUML code copied.');
         } catch (error) {
           new Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -667,16 +686,16 @@ export default class PUMLViewerPlugin extends Plugin {
 
         loadingEl.remove();
         const svgHost = diagramPane.createDiv();
-        svgHost.innerHTML = response.text;
-        const svgEl = svgHost.querySelector('svg');
+        const svgEl = parseSvgMarkup(response.text);
         if (svgEl) {
-          svgEl.style.width = '100%';
-          svgEl.style.height = 'auto';
-          svgEl.style.display = 'block';
+          svgEl.setCssProps({ width: '100%', height: 'auto', display: 'block' });
+          svgHost.appendChild(svgEl);
+        } else {
+          throw new Error('Response is not valid SVG content.');
         }
       } else {
         const img = diagramPane.createEl('img', { cls: 'puml-embed-image' });
-        img.style.display = 'none';
+        img.setCssProps({ display: 'none' });
         const objectUrl = await this.fetchPngObjectUrl(renderSource);
         img.src = objectUrl;
         img.alt = 'PlantUML diagram';
@@ -684,7 +703,7 @@ export default class PUMLViewerPlugin extends Plugin {
           'load',
           () => {
             loadingEl.remove();
-            img.style.display = 'block';
+            img.setCssProps({ display: 'block' });
             URL.revokeObjectURL(objectUrl);
           },
           { once: true },
@@ -880,25 +899,25 @@ class PUMLViewerView extends ItemView {
     });
 
     this.exportPngBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn' });
-    this.exportPngBtn.innerHTML = ICONS.exportPng;
-    this.exportPngBtn.setAttr('title', 'Save PNG Image');
-    this.exportPngBtn.setAttr('aria-label', 'Save PNG Image');
+    setElementSvgIcon(this.exportPngBtn, ICONS.exportPng);
+    this.exportPngBtn.setAttr('title', 'Save PNG image');
+    this.exportPngBtn.setAttr('aria-label', 'Save PNG image');
     this.exportPngBtn.addEventListener('click', () => {
       void this.exportDiagram('png');
     });
 
     this.exportSvgBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn' });
-    this.exportSvgBtn.innerHTML = ICONS.exportSvg;
-    this.exportSvgBtn.setAttr('title', 'Save SVG Image');
-    this.exportSvgBtn.setAttr('aria-label', 'Save SVG Image');
+    setElementSvgIcon(this.exportSvgBtn, ICONS.exportSvg);
+    this.exportSvgBtn.setAttr('title', 'Save SVG image');
+    this.exportSvgBtn.setAttr('aria-label', 'Save SVG image');
     this.exportSvgBtn.addEventListener('click', () => {
       void this.exportDiagram('svg');
     });
 
     this.exportAsciiBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn' });
-    this.exportAsciiBtn.innerHTML = ICONS.exportAscii;
-    this.exportAsciiBtn.setAttr('title', 'Save ASCII Art');
-    this.exportAsciiBtn.setAttr('aria-label', 'Save ASCII Art');
+    setElementSvgIcon(this.exportAsciiBtn, ICONS.exportAscii);
+    this.exportAsciiBtn.setAttr('title', 'Save ASCII art');
+    this.exportAsciiBtn.setAttr('aria-label', 'Save ASCII art');
     this.exportAsciiBtn.addEventListener('click', () => {
       void this.exportDiagram('txt');
     });
@@ -955,7 +974,7 @@ class PUMLViewerView extends ItemView {
     }
   }
 
-  async getState(): Promise<ViewState> {
+  getState(): ViewState {
     return { file: this.currentFile?.path, mode: this.mode };
   }
 
@@ -1139,11 +1158,11 @@ class PUMLViewerView extends ItemView {
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new Notice('PUML source saved');
+      new Notice('PlantUML source saved.');
     } catch (error) {
       console.error(error);
       this.statusEl.setText('Save failed.');
-      new Notice('Failed to save PUML source');
+      new Notice('Failed to save PlantUML source.');
     }
   }
 
@@ -1153,7 +1172,7 @@ class PUMLViewerView extends ItemView {
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new Notice('PUML file is empty');
+        new Notice('PlantUML file is empty.');
         return;
       }
 
@@ -1256,12 +1275,16 @@ class PUMLViewerView extends ItemView {
 
         loadingEl.remove();
         const svgHost = renderRoot.createDiv();
-        svgHost.innerHTML = response.text;
+        const svgEl = parseSvgMarkup(response.text);
+        if (!svgEl) {
+          throw new Error('Response is not valid SVG content.');
+        }
+        svgHost.appendChild(svgEl);
       } else {
         const img = renderRoot.createEl('img', {
           cls: 'puml-viewer-image',
         });
-        img.style.display = 'none';
+        img.setCssProps({ display: 'none' });
         const objectUrl = await this.plugin.fetchPngObjectUrl(source);
         img.src = objectUrl;
         img.alt = this.currentFile.name;
@@ -1269,7 +1292,7 @@ class PUMLViewerView extends ItemView {
           'load',
           () => {
             loadingEl.remove();
-            img.style.display = 'block';
+            img.setCssProps({ display: 'block' });
             this.statusEl.setText(`Rendered: ${this.currentFile?.name ?? ''}`);
             URL.revokeObjectURL(objectUrl);
           },
@@ -1302,7 +1325,7 @@ class PUMLViewerView extends ItemView {
         `Failed to render diagram.\n\n${error instanceof Error ? error.message : String(error)}`,
       );
 
-      new Notice('PUML render failed');
+      new Notice('PlantUML render failed.');
     }
   }
 
@@ -1315,12 +1338,10 @@ class PUMLViewerView extends ItemView {
   }
 
   private fitToWidth(): void {
-    const renderRoot = this.contentHostEl?.querySelector('.puml-viewer-render-root') as
-      | HTMLElement
-      | null;
+    const renderRoot = this.contentHostEl?.querySelector<HTMLElement>('.puml-viewer-render-root');
     if (!renderRoot || !this.imageWrapEl) return;
 
-    const imageEl = renderRoot.querySelector('.puml-viewer-image') as HTMLImageElement | null;
+    const imageEl = renderRoot.querySelector<HTMLImageElement>('.puml-viewer-image');
     if (imageEl) {
       const baseWidth = this.getImageBaseWidth(imageEl);
       if (!(baseWidth > 0)) {
@@ -1339,7 +1360,7 @@ class PUMLViewerView extends ItemView {
       return;
     }
 
-    const svgEl = renderRoot.querySelector('svg') as SVGSVGElement | null;
+    const svgEl = renderRoot.querySelector<SVGSVGElement>('svg');
     if (!svgEl) return;
 
     const baseWidth = this.getSvgBaseWidth(svgEl);
@@ -1355,19 +1376,19 @@ class PUMLViewerView extends ItemView {
   }
 
   private applyZoom(): void {
-    const renderRoot = this.contentHostEl?.querySelector('.puml-viewer-render-root') as
-      | HTMLElement
-      | null;
+    const renderRoot = this.contentHostEl?.querySelector<HTMLElement>('.puml-viewer-render-root');
     if (!renderRoot) return;
 
-    const imageEl = renderRoot.querySelector('.puml-viewer-image') as HTMLImageElement | null;
+    const imageEl = renderRoot.querySelector<HTMLImageElement>('.puml-viewer-image');
     if (imageEl) {
       const baseWidth = this.getImageBaseWidth(imageEl);
 
       if (baseWidth > 0) {
-        imageEl.style.maxWidth = 'none';
-        imageEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
-        imageEl.style.height = 'auto';
+        imageEl.setCssProps({
+          'max-width': 'none',
+          width: `${Math.max(1, Math.round(baseWidth * this.zoom))}px`,
+          height: 'auto',
+        });
       } else {
         imageEl.addEventListener(
           'load',
@@ -1380,16 +1401,18 @@ class PUMLViewerView extends ItemView {
       return;
     }
 
-    const svgEl = renderRoot.querySelector('svg') as SVGSVGElement | null;
+    const svgEl = renderRoot.querySelector<SVGSVGElement>('svg');
     if (!svgEl) return;
 
     const baseWidth = this.getSvgBaseWidth(svgEl);
 
     if (!(baseWidth > 0)) return;
 
-    svgEl.style.maxWidth = 'none';
-    svgEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
-    svgEl.style.height = 'auto';
+    svgEl.setCssProps({
+      'max-width': 'none',
+      width: `${Math.max(1, Math.round(baseWidth * this.zoom))}px`,
+      height: 'auto',
+    });
   }
 
   private bindMainViewPanning(): void {
@@ -1489,7 +1512,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'PUML Viewer Settings' });
+    new Setting(containerEl).setName('PlantUML viewer settings').setHeading();
 
     new Setting(containerEl)
       .setName('Server type')
@@ -1534,7 +1557,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Local URL')
-      .setDesc('Example: http://localhost:8000')
+      .setDesc('Example: http://localhost:8000.')
       .addText((text) =>
         text
           .setPlaceholder('http://localhost:8000')
@@ -1571,7 +1594,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded block default view')
-      .setDesc('Choose what to show first in markdown PlantUML blocks.')
+      .setDesc('Choose what to show first in Markdown PlantUML blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('diagram', 'Diagram')
@@ -1585,7 +1608,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded diagram alignment')
-      .setDesc('Default alignment for diagram in markdown PlantUML block.')
+      .setDesc('Default alignment for diagram in a Markdown PlantUML block.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('left', 'Left')

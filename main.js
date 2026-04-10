@@ -4717,6 +4717,20 @@ var ICONS = {
   exportSvg: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c2.2 0 2.2-8 4.4-8s2.2 8 4.4 8 2.2-8 4.4-8 2.2 8 2.8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="16" r="1.5" fill="currentColor"/><circle cx="8.4" cy="8" r="1.5" fill="currentColor"/><circle cx="12.8" cy="16" r="1.5" fill="currentColor"/><circle cx="17.2" cy="8" r="1.5" fill="currentColor"/></svg>`,
   exportAscii: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 6.5 19M12 5 17.5 19M8.4 14.5h7.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 };
+function parseSvgMarkup(svgMarkup) {
+  const parsed = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  if (parsed.querySelector("parsererror")) return null;
+  const svgEl = parsed.querySelector("svg");
+  if (!svgEl) return null;
+  const imported = document.importNode(svgEl, true);
+  return imported instanceof SVGSVGElement ? imported : null;
+}
+function setElementSvgIcon(element, svgMarkup) {
+  const svgEl = parseSvgMarkup(svgMarkup);
+  element.empty();
+  if (!svgEl) return;
+  element.appendChild(svgEl);
+}
 var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   async onload() {
     await this.loadSettings();
@@ -4724,7 +4738,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     this.registerExtensions(["puml"], VIEW_TYPE_PUML);
     this.addCommand({
       id: "open-current-puml-in-viewer",
-      name: "Open current PUML in viewer",
+      name: "Open current PlantUML file in viewer",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         const canOpen = !!file && file.extension === "puml";
@@ -4911,9 +4925,9 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn" });
     const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn" });
     const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn" });
-    zoomBtn.innerHTML = ICONS.zoom;
-    saveBtn.innerHTML = ICONS.save;
-    copyBtn.innerHTML = ICONS.copy;
+    setElementSvgIcon(zoomBtn, ICONS.zoom);
+    setElementSvgIcon(saveBtn, ICONS.save);
+    setElementSvgIcon(copyBtn, ICONS.copy);
     toggleBtn.setAttr("title", "Toggle code/diagram");
     toggleBtn.setAttr("aria-label", "Toggle code/diagram");
     zoomBtn.setAttr("title", "Zoom overlay");
@@ -4924,17 +4938,11 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     copyBtn.setAttr("aria-label", "Copy code");
     const diagramPane = container.createDiv({ cls: "puml-embed-diagram" });
     if (widthHintPx) {
-      diagramPane.style.maxWidth = `${widthHintPx}px`;
-      if (this.settings.embeddedDiagramAlign === "left") {
-        diagramPane.style.marginLeft = "0";
-        diagramPane.style.marginRight = "auto";
-      } else if (this.settings.embeddedDiagramAlign === "right") {
-        diagramPane.style.marginLeft = "auto";
-        diagramPane.style.marginRight = "0";
-      } else {
-        diagramPane.style.marginLeft = "auto";
-        diagramPane.style.marginRight = "auto";
-      }
+      const align = this.settings.embeddedDiagramAlign === "left" ? { "margin-left": "0", "margin-right": "auto" } : this.settings.embeddedDiagramAlign === "right" ? { "margin-left": "auto", "margin-right": "0" } : { "margin-left": "auto", "margin-right": "auto" };
+      diagramPane.setCssProps({
+        "max-width": `${widthHintPx}px`,
+        ...align
+      });
     }
     const codePane = container.createEl("pre", { cls: "puml-embed-code" });
     const codeEl = codePane.createEl("code", { cls: "puml-embed-code-content" });
@@ -4952,7 +4960,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       if (showCode) {
         diagramPane.hide();
         codePane.show();
-        toggleBtn.innerHTML = ICONS.diagram;
+        setElementSvgIcon(toggleBtn, ICONS.diagram);
         toggleBtn.setAttr("title", "Show diagram");
         toggleBtn.setAttr("aria-label", "Show diagram");
         zoomBtn.addClass("is-hidden");
@@ -4961,7 +4969,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       } else {
         codePane.hide();
         diagramPane.show();
-        toggleBtn.innerHTML = ICONS.code;
+        setElementSvgIcon(toggleBtn, ICONS.code);
         toggleBtn.setAttr("title", "Show code");
         toggleBtn.setAttr("aria-label", "Show code");
         zoomBtn.removeClass("is-hidden");
@@ -5027,9 +5035,11 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       const clampZoom = (value) => Math.min(8, Math.max(0.1, Math.round(value * 100) / 100));
       const applyZoom = () => {
         if (!renderedEl || baseWidth <= 0) return;
-        renderedEl.style.maxWidth = "none";
-        renderedEl.style.width = `${Math.max(1, Math.round(baseWidth * zoom))}px`;
-        renderedEl.style.height = "auto";
+        renderedEl.setCssProps({
+          "max-width": "none",
+          width: `${Math.max(1, Math.round(baseWidth * zoom))}px`,
+          height: "auto"
+        });
       };
       const setZoom = (value) => {
         zoom = clampZoom(value);
@@ -5129,10 +5139,9 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
           }
           loadingEl2.remove();
           const svgHost = document.createElement("div");
-          svgHost.innerHTML = response.text;
-          const svgEl = svgHost.querySelector("svg");
+          const svgEl = parseSvgMarkup(response.text);
           if (svgEl) {
-            svgEl.style.display = "block";
+            svgEl.setCssProps({ display: "block" });
             let baseSvgWidth = 0;
             try {
               const bbox = svgEl.getBBox();
@@ -5150,13 +5159,16 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
             baseWidth = viewBoxWidth || widthAttr || measuredWidth || 1e3;
             fitToViewport();
             centerViewportOnce();
+            svgHost.appendChild(svgEl);
+          } else {
+            throw new Error("Response is not valid SVG content.");
           }
           canvasEl.appendChild(svgHost);
         } else {
           const img = document.createElement("img");
           img.className = "puml-zoom-image";
           img.alt = "PlantUML diagram";
-          img.style.display = "none";
+          img.setCssProps({ display: "none" });
           const objectUrl = await this.fetchPngObjectUrl(renderSource);
           img.src = objectUrl;
           canvasEl.appendChild(img);
@@ -5167,7 +5179,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
               renderedEl = img;
               baseWidth = img.naturalWidth || img.getBoundingClientRect().width || 1e3;
               fitToViewport();
-              img.style.display = "block";
+              img.setCssProps({ display: "block" });
               centerViewportOnce();
               URL.revokeObjectURL(objectUrl);
             },
@@ -5225,7 +5237,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new import_obsidian.Notice("PlantUML code copied");
+          new import_obsidian.Notice("PlantUML code copied.");
         } catch (error) {
           new import_obsidian.Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -5249,16 +5261,16 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
         }
         loadingEl.remove();
         const svgHost = diagramPane.createDiv();
-        svgHost.innerHTML = response.text;
-        const svgEl = svgHost.querySelector("svg");
+        const svgEl = parseSvgMarkup(response.text);
         if (svgEl) {
-          svgEl.style.width = "100%";
-          svgEl.style.height = "auto";
-          svgEl.style.display = "block";
+          svgEl.setCssProps({ width: "100%", height: "auto", display: "block" });
+          svgHost.appendChild(svgEl);
+        } else {
+          throw new Error("Response is not valid SVG content.");
         }
       } else {
         const img = diagramPane.createEl("img", { cls: "puml-embed-image" });
-        img.style.display = "none";
+        img.setCssProps({ display: "none" });
         const objectUrl = await this.fetchPngObjectUrl(renderSource);
         img.src = objectUrl;
         img.alt = "PlantUML diagram";
@@ -5266,7 +5278,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
           "load",
           () => {
             loadingEl.remove();
-            img.style.display = "block";
+            img.setCssProps({ display: "block" });
             URL.revokeObjectURL(objectUrl);
           },
           { once: true }
@@ -5414,23 +5426,23 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
       }
     });
     this.exportPngBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
-    this.exportPngBtn.innerHTML = ICONS.exportPng;
-    this.exportPngBtn.setAttr("title", "Save PNG Image");
-    this.exportPngBtn.setAttr("aria-label", "Save PNG Image");
+    setElementSvgIcon(this.exportPngBtn, ICONS.exportPng);
+    this.exportPngBtn.setAttr("title", "Save PNG image");
+    this.exportPngBtn.setAttr("aria-label", "Save PNG image");
     this.exportPngBtn.addEventListener("click", () => {
       void this.exportDiagram("png");
     });
     this.exportSvgBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
-    this.exportSvgBtn.innerHTML = ICONS.exportSvg;
-    this.exportSvgBtn.setAttr("title", "Save SVG Image");
-    this.exportSvgBtn.setAttr("aria-label", "Save SVG Image");
+    setElementSvgIcon(this.exportSvgBtn, ICONS.exportSvg);
+    this.exportSvgBtn.setAttr("title", "Save SVG image");
+    this.exportSvgBtn.setAttr("aria-label", "Save SVG image");
     this.exportSvgBtn.addEventListener("click", () => {
       void this.exportDiagram("svg");
     });
     this.exportAsciiBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
-    this.exportAsciiBtn.innerHTML = ICONS.exportAscii;
-    this.exportAsciiBtn.setAttr("title", "Save ASCII Art");
-    this.exportAsciiBtn.setAttr("aria-label", "Save ASCII Art");
+    setElementSvgIcon(this.exportAsciiBtn, ICONS.exportAscii);
+    this.exportAsciiBtn.setAttr("title", "Save ASCII art");
+    this.exportAsciiBtn.setAttr("aria-label", "Save ASCII art");
     this.exportAsciiBtn.addEventListener("click", () => {
       void this.exportDiagram("txt");
     });
@@ -5476,7 +5488,7 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
       await this.renderActiveMode();
     }
   }
-  async getState() {
+  getState() {
     return { file: this.currentFile?.path, mode: this.mode };
   }
   async loadFileFromState() {
@@ -5624,11 +5636,11 @@ ${error instanceof Error ? error.message : String(error)}`
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new import_obsidian.Notice("PUML source saved");
+      new import_obsidian.Notice("PlantUML source saved.");
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Save failed.");
-      new import_obsidian.Notice("Failed to save PUML source");
+      new import_obsidian.Notice("Failed to save PlantUML source.");
     }
   }
   async exportDiagram(format) {
@@ -5636,7 +5648,7 @@ ${error instanceof Error ? error.message : String(error)}`
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new import_obsidian.Notice("PUML file is empty");
+        new import_obsidian.Notice("PlantUML file is empty.");
         return;
       }
       const outputPath = (0, import_obsidian.normalizePath)(
@@ -5725,12 +5737,16 @@ ${error instanceof Error ? error.message : String(error)}`
         }
         loadingEl.remove();
         const svgHost = renderRoot.createDiv();
-        svgHost.innerHTML = response.text;
+        const svgEl = parseSvgMarkup(response.text);
+        if (!svgEl) {
+          throw new Error("Response is not valid SVG content.");
+        }
+        svgHost.appendChild(svgEl);
       } else {
         const img = renderRoot.createEl("img", {
           cls: "puml-viewer-image"
         });
-        img.style.display = "none";
+        img.setCssProps({ display: "none" });
         const objectUrl = await this.plugin.fetchPngObjectUrl(source);
         img.src = objectUrl;
         img.alt = this.currentFile.name;
@@ -5738,7 +5754,7 @@ ${error instanceof Error ? error.message : String(error)}`
           "load",
           () => {
             loadingEl.remove();
-            img.style.display = "block";
+            img.setCssProps({ display: "block" });
             this.statusEl.setText(`Rendered: ${this.currentFile?.name ?? ""}`);
             URL.revokeObjectURL(objectUrl);
           },
@@ -5770,7 +5786,7 @@ ${error instanceof Error ? error.message : String(error)}`
 
 ${error instanceof Error ? error.message : String(error)}`
       );
-      new import_obsidian.Notice("PUML render failed");
+      new import_obsidian.Notice("PlantUML render failed.");
     }
   }
   setZoom(value) {
@@ -5818,9 +5834,11 @@ ${error instanceof Error ? error.message : String(error)}`
     if (imageEl) {
       const baseWidth2 = this.getImageBaseWidth(imageEl);
       if (baseWidth2 > 0) {
-        imageEl.style.maxWidth = "none";
-        imageEl.style.width = `${Math.max(1, Math.round(baseWidth2 * this.zoom))}px`;
-        imageEl.style.height = "auto";
+        imageEl.setCssProps({
+          "max-width": "none",
+          width: `${Math.max(1, Math.round(baseWidth2 * this.zoom))}px`,
+          height: "auto"
+        });
       } else {
         imageEl.addEventListener(
           "load",
@@ -5836,9 +5854,11 @@ ${error instanceof Error ? error.message : String(error)}`
     if (!svgEl) return;
     const baseWidth = this.getSvgBaseWidth(svgEl);
     if (!(baseWidth > 0)) return;
-    svgEl.style.maxWidth = "none";
-    svgEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
-    svgEl.style.height = "auto";
+    svgEl.setCssProps({
+      "max-width": "none",
+      width: `${Math.max(1, Math.round(baseWidth * this.zoom))}px`,
+      height: "auto"
+    });
   }
   bindMainViewPanning() {
     this.registerDomEvent(this.imageWrapEl, "mousedown", (event) => {
@@ -5921,7 +5941,7 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "PUML Viewer Settings" });
+    new import_obsidian.Setting(containerEl).setName("PlantUML viewer settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("Server type").setDesc("Choose which server URL to use for rendering.").addDropdown(
       (dropdown) => dropdown.addOption("plantuml", "PlantUML").addOption("kroki", "Kroki").addOption("local", "Local").setValue(this.plugin.settings.serverType).onChange(async (value) => {
         this.plugin.settings.serverType = value;
@@ -5940,7 +5960,7 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Example: http://localhost:8000").addText(
+    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Example: http://localhost:8000.").addText(
       (text) => text.setPlaceholder("http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
         this.plugin.settings.localServerUrl = value.trim();
         await this.plugin.saveSettings();
@@ -5958,13 +5978,13 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in markdown PlantUML blocks.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in Markdown PlantUML blocks.").addDropdown(
       (dropdown) => dropdown.addOption("diagram", "Diagram").addOption("code", "Code").setValue(this.plugin.settings.embeddedDefaultView).onChange(async (value) => {
         this.plugin.settings.embeddedDefaultView = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagram in markdown PlantUML block.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagram in a Markdown PlantUML block.").addDropdown(
       (dropdown) => dropdown.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(this.plugin.settings.embeddedDiagramAlign).onChange(async (value) => {
         this.plugin.settings.embeddedDiagramAlign = value;
         await this.plugin.saveSettings();

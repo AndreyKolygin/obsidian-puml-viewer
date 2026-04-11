@@ -1,6 +1,6 @@
 {
   "name": "obsidian-puml-viewer",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "Renders PlantUML from .puml files and markdown code blocks.",
   "main": "main.js",

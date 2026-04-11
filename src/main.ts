@@ -86,6 +86,22 @@ function setElementSvgIcon(element: HTMLElement, svgMarkup: string): void {
   const svgEl = parseSvgMarkup(svgMarkup) ?? parseInlineSvgMarkup(svgMarkup);
   element.empty();
   if (!svgEl) return;
+
+  // Align with Obsidian/Lucide inline icon conventions so icons remain visible
+  // even if plugin CSS is not applied yet.
+  if (!svgEl.hasAttribute('xmlns')) {
+    svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  }
+  if (!svgEl.hasAttribute('width')) {
+    svgEl.setAttribute('width', '24');
+  }
+  if (!svgEl.hasAttribute('height')) {
+    svgEl.setAttribute('height', '24');
+  }
+  if (!svgEl.hasAttribute('fill')) {
+    svgEl.setAttribute('fill', 'none');
+  }
+  svgEl.classList.add('svg-icon');
   svgEl.setAttribute('aria-hidden', 'true');
   svgEl.setAttribute('focusable', 'false');
   element.appendChild(svgEl);

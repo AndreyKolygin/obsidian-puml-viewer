@@ -188,6 +188,14 @@
   pointer-events: none;
 }
 
+.puml-embed-toggle svg,
+.puml-embed-zoom-btn svg,
+.puml-embed-save-btn svg,
+.puml-embed-copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .puml-embed-actions button.is-hidden {
   display: none;
 }

@@ -15,6 +15,7 @@ import {
 import { encode } from 'plantuml-encoder';
 
 const VIEW_TYPE_PUML = 'puml-viewer';
+const encodePlantuml = encode as (source: string) => string;
 
 type ViewMode = 'view' | 'edit';
 type DiagramFormat = 'svg' | 'png' | 'txt';
@@ -174,7 +175,7 @@ export default class PUMLViewerPlugin extends Plugin {
 
   buildRenderUrl(source: string): string {
     const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, '');
-    const encoded = encode(source);
+    const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
 
     if (this.settings.serverType === 'kroki') {
@@ -225,7 +226,7 @@ export default class PUMLViewerPlugin extends Plugin {
       });
     }
 
-    const encoded = encode(source);
+    const encoded = encodePlantuml(source);
     return requestUrl({
       url: `${normalizedBase}/${format}/${encoded}`,
       method: 'GET',
@@ -1530,7 +1531,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Plantuml server url')
+      .setName('Plantuml server URL')
       .setDesc('Example: https://www.plantuml.com/plantuml')
       .addText((text) =>
         text
@@ -1557,10 +1558,10 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Local URL')
-      .setDesc('Use http://localhost:8000.')
+      .setDesc('Use a local server URL.')
       .addText((text) =>
         text
-          .setPlaceholder('http://localhost:8000')
+          .setPlaceholder('Local server URL')
           .setValue(this.plugin.settings.localServerUrl)
           .onChange(async (value) => {
             this.plugin.settings.localServerUrl = value.trim();

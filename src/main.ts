@@ -1530,7 +1530,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Plantuml url')
+      .setName('Plantuml server url')
       .setDesc('Example: https://www.plantuml.com/plantuml')
       .addText((text) =>
         text
@@ -1557,10 +1557,10 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Local URL')
-      .setDesc('For example: http://localhost:8000.')
+      .setDesc('Use http://localhost:8000.')
       .addText((text) =>
         text
-          .setPlaceholder('For example: http://localhost:8000')
+          .setPlaceholder('http://localhost:8000')
           .setValue(this.plugin.settings.localServerUrl)
           .onChange(async (value) => {
             this.plugin.settings.localServerUrl = value.trim();
@@ -1594,7 +1594,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded block default view')
-      .setDesc('Choose what to show first in markdown plantuml blocks.')
+      .setDesc('Choose what to show first in embedded plantuml blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('diagram', 'Diagram')
@@ -1608,7 +1608,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded diagram alignment')
-      .setDesc('Default alignment for diagram in a markdown plantuml block.')
+      .setDesc('Default alignment for diagrams in embedded plantuml blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('left', 'Left')

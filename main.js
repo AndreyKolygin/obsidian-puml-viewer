@@ -5948,7 +5948,7 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Plantuml url").setDesc("Example: https://www.plantuml.com/plantuml").addText(
+    new import_obsidian.Setting(containerEl).setName("Plantuml server url").setDesc("Example: https://www.plantuml.com/plantuml").addText(
       (text) => text.setPlaceholder("https://www.plantuml.com/plantuml").setValue(this.plugin.settings.plantumlServerUrl).onChange(async (value) => {
         this.plugin.settings.plantumlServerUrl = value.trim();
         await this.plugin.saveSettings();
@@ -5960,8 +5960,8 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("For example: http://localhost:8000.").addText(
-      (text) => text.setPlaceholder("For example: http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Use http://localhost:8000.").addText(
+      (text) => text.setPlaceholder("http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
         this.plugin.settings.localServerUrl = value.trim();
         await this.plugin.saveSettings();
       })
@@ -5978,13 +5978,13 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in markdown plantuml blocks.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in embedded plantuml blocks.").addDropdown(
       (dropdown) => dropdown.addOption("diagram", "Diagram").addOption("code", "Code").setValue(this.plugin.settings.embeddedDefaultView).onChange(async (value) => {
         this.plugin.settings.embeddedDefaultView = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagram in a markdown plantuml block.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagrams in embedded plantuml blocks.").addDropdown(
       (dropdown) => dropdown.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(this.plugin.settings.embeddedDiagramAlign).onChange(async (value) => {
         this.plugin.settings.embeddedDiagramAlign = value;
         await this.plugin.saveSettings();

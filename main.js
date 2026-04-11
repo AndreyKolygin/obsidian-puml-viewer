@@ -4946,10 +4946,10 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const { renderSource, widthHintPx } = this.extractEmbeddedWidthHint(source, fenceWidthHintPx);
     const container = el.createDiv({ cls: "puml-embed-block" });
     const actionsEl = container.createDiv({ cls: "puml-embed-actions" });
-    const toggleBtn = actionsEl.createEl("button", { cls: "puml-embed-toggle" });
-    const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn" });
-    const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn" });
-    const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn" });
+    const toggleBtn = actionsEl.createEl("button", { cls: "puml-embed-toggle clickable-icon" });
+    const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn clickable-icon" });
+    const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn clickable-icon" });
+    const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn clickable-icon" });
     setElementSvgIcon(zoomBtn, ICONS.zoom);
     setElementSvgIcon(saveBtn, ICONS.save);
     setElementSvgIcon(copyBtn, ICONS.copy);
@@ -5450,21 +5450,21 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
         void this.reloadEditorFromFile();
       }
     });
-    this.exportPngBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
+    this.exportPngBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
     setElementSvgIcon(this.exportPngBtn, ICONS.exportPng);
     this.exportPngBtn.setAttr("title", "Save PNG image");
     this.exportPngBtn.setAttr("aria-label", "Save PNG image");
     this.exportPngBtn.addEventListener("click", () => {
       void this.exportDiagram("png");
     });
-    this.exportSvgBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
+    this.exportSvgBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
     setElementSvgIcon(this.exportSvgBtn, ICONS.exportSvg);
     this.exportSvgBtn.setAttr("title", "Save SVG image");
     this.exportSvgBtn.setAttr("aria-label", "Save SVG image");
     this.exportSvgBtn.addEventListener("click", () => {
       void this.exportDiagram("svg");
     });
-    this.exportAsciiBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn" });
+    this.exportAsciiBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
     setElementSvgIcon(this.exportAsciiBtn, ICONS.exportAscii);
     this.exportAsciiBtn.setAttr("title", "Save ASCII art");
     this.exportAsciiBtn.setAttr("aria-label", "Save ASCII art");

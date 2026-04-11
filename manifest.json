@@ -1,7 +1,7 @@
 {
   "id": "puml-viewer",
   "name": "PUML Viewer",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "minAppVersion": "1.5.0",
   "description": "Renders PlantUML from .puml files and markdown code blocks.",
   "author": "Andrei Kolygin",

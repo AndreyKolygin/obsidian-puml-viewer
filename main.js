@@ -4727,10 +4727,20 @@ function parseSvgMarkup(svgMarkup) {
   if (imported.tagName.toLowerCase() !== "svg") return null;
   return imported;
 }
+function parseInlineSvgMarkup(svgMarkup) {
+  const parsed = new DOMParser().parseFromString(svgMarkup, "text/html");
+  const svgEl = parsed.querySelector("svg");
+  if (!svgEl) return null;
+  const imported = document.importNode(svgEl, true);
+  if (imported.tagName.toLowerCase() !== "svg") return null;
+  return imported;
+}
 function setElementSvgIcon(element, svgMarkup) {
-  const svgEl = parseSvgMarkup(svgMarkup);
+  const svgEl = parseSvgMarkup(svgMarkup) ?? parseInlineSvgMarkup(svgMarkup);
   element.empty();
   if (!svgEl) return;
+  svgEl.setAttribute("aria-hidden", "true");
+  svgEl.setAttribute("focusable", "false");
   element.appendChild(svgEl);
 }
 var PUMLViewerPlugin = class extends import_obsidian.Plugin {

@@ -73,10 +73,21 @@ function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   return imported as SVGSVGElement;
 }
 
+function parseInlineSvgMarkup(svgMarkup: string): SVGSVGElement | null {
+  const parsed = new DOMParser().parseFromString(svgMarkup, 'text/html');
+  const svgEl = parsed.querySelector('svg');
+  if (!svgEl) return null;
+  const imported = document.importNode(svgEl, true) as Element;
+  if (imported.tagName.toLowerCase() !== 'svg') return null;
+  return imported as SVGSVGElement;
+}
+
 function setElementSvgIcon(element: HTMLElement, svgMarkup: string): void {
-  const svgEl = parseSvgMarkup(svgMarkup);
+  const svgEl = parseSvgMarkup(svgMarkup) ?? parseInlineSvgMarkup(svgMarkup);
   element.empty();
   if (!svgEl) return;
+  svgEl.setAttribute('aria-hidden', 'true');
+  svgEl.setAttribute('focusable', 'false');
   element.appendChild(svgEl);
 }
 

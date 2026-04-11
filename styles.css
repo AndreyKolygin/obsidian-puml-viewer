@@ -24,6 +24,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-normal);
 }
 
 .puml-toolbar-icon-btn svg {
@@ -177,6 +178,7 @@
   align-items: center;
   justify-content: center;
   padding: 4px;
+  color: var(--text-normal);
 }
 
 .puml-embed-actions button svg {

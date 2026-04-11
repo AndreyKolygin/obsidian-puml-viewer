@@ -64,9 +64,13 @@ function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   const parsed = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
   if (parsed.querySelector('parsererror')) return null;
   const svgEl = parsed.querySelector('svg');
-  if (!svgEl) return null;
-  const imported = document.importNode(svgEl, true);
-  return imported instanceof SVGSVGElement ? imported : null;
+  if (!svgEl || svgEl.tagName.toLowerCase() !== 'svg') return null;
+
+  // In Obsidian/Electron, cross-realm `instanceof SVGSVGElement` checks can fail.
+  // Validate by tag name and return the imported node as an SVG root element.
+  const imported = document.importNode(svgEl, true) as Element;
+  if (imported.tagName.toLowerCase() !== 'svg') return null;
+  return imported as SVGSVGElement;
 }
 
 function setElementSvgIcon(element: HTMLElement, svgMarkup: string): void {

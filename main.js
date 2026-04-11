@@ -4696,6 +4696,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_plantuml_encoder = __toESM(require_browser_index());
 var VIEW_TYPE_PUML = "puml-viewer";
+var encodePlantuml = import_plantuml_encoder.encode;
 var DEFAULT_SETTINGS = {
   serverType: "plantuml",
   plantumlServerUrl: "https://www.plantuml.com/plantuml",
@@ -4721,9 +4722,10 @@ function parseSvgMarkup(svgMarkup) {
   const parsed = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
   if (parsed.querySelector("parsererror")) return null;
   const svgEl = parsed.querySelector("svg");
-  if (!svgEl) return null;
+  if (!svgEl || svgEl.tagName.toLowerCase() !== "svg") return null;
   const imported = document.importNode(svgEl, true);
-  return imported instanceof SVGSVGElement ? imported : null;
+  if (imported.tagName.toLowerCase() !== "svg") return null;
+  return imported;
 }
 function setElementSvgIcon(element, svgMarkup) {
   const svgEl = parseSvgMarkup(svgMarkup);
@@ -4810,7 +4812,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   }
   buildRenderUrl(source) {
     const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, "");
-    const encoded = (0, import_plantuml_encoder.encode)(source);
+    const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
     if (this.settings.serverType === "kroki") {
       return `${normalizedBase}/plantuml/${format}/${encoded}`;
@@ -4852,7 +4854,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
         throw: false
       });
     }
-    const encoded = (0, import_plantuml_encoder.encode)(source);
+    const encoded = encodePlantuml(source);
     return (0, import_obsidian.requestUrl)({
       url: `${normalizedBase}/${format}/${encoded}`,
       method: "GET",
@@ -5948,7 +5950,7 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Plantuml server url").setDesc("Example: https://www.plantuml.com/plantuml").addText(
+    new import_obsidian.Setting(containerEl).setName("Plantuml server URL").setDesc("Example: https://www.plantuml.com/plantuml").addText(
       (text) => text.setPlaceholder("https://www.plantuml.com/plantuml").setValue(this.plugin.settings.plantumlServerUrl).onChange(async (value) => {
         this.plugin.settings.plantumlServerUrl = value.trim();
         await this.plugin.saveSettings();
@@ -5960,8 +5962,8 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Use http://localhost:8000.").addText(
-      (text) => text.setPlaceholder("http://localhost:8000").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Use a local server URL.").addText(
+      (text) => text.setPlaceholder("Local server URL").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
         this.plugin.settings.localServerUrl = value.trim();
         await this.plugin.saveSettings();
       })

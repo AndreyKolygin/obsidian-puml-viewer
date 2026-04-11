@@ -4708,16 +4708,6 @@ var DEFAULT_SETTINGS = {
   embeddedDefaultView: "diagram",
   embeddedDiagramAlign: "center"
 };
-var ICONS = {
-  code: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7 4 12l4.5 5M15.5 7 20 12l-4.5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  diagram: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="5" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="15" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9v3h10V9M12 12v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-  zoom: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4.2-4.2M11 8v6M8 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-  save: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  copy: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="5" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
-  exportPng: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><path d="m6.5 16 3.5-3.5 2.4 2.4 2.3-2.3L18 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  exportSvg: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c2.2 0 2.2-8 4.4-8s2.2 8 4.4 8 2.2-8 4.4-8 2.2 8 2.8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="16" r="1.5" fill="currentColor"/><circle cx="8.4" cy="8" r="1.5" fill="currentColor"/><circle cx="12.8" cy="16" r="1.5" fill="currentColor"/><circle cx="17.2" cy="8" r="1.5" fill="currentColor"/></svg>`,
-  exportAscii: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 6.5 19M12 5 17.5 19M8.4 14.5h7.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-};
 function parseSvgMarkup(svgMarkup) {
   const parsed = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
   if (parsed.querySelector("parsererror")) return null;
@@ -4726,35 +4716,6 @@ function parseSvgMarkup(svgMarkup) {
   const imported = document.importNode(svgEl, true);
   if (imported.tagName.toLowerCase() !== "svg") return null;
   return imported;
-}
-function parseInlineSvgMarkup(svgMarkup) {
-  const parsed = new DOMParser().parseFromString(svgMarkup, "text/html");
-  const svgEl = parsed.querySelector("svg");
-  if (!svgEl) return null;
-  const imported = document.importNode(svgEl, true);
-  if (imported.tagName.toLowerCase() !== "svg") return null;
-  return imported;
-}
-function setElementSvgIcon(element, svgMarkup) {
-  const svgEl = parseSvgMarkup(svgMarkup) ?? parseInlineSvgMarkup(svgMarkup);
-  element.empty();
-  if (!svgEl) return;
-  if (!svgEl.hasAttribute("xmlns")) {
-    svgEl.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  }
-  if (!svgEl.hasAttribute("width")) {
-    svgEl.setAttribute("width", "24");
-  }
-  if (!svgEl.hasAttribute("height")) {
-    svgEl.setAttribute("height", "24");
-  }
-  if (!svgEl.hasAttribute("fill")) {
-    svgEl.setAttribute("fill", "none");
-  }
-  svgEl.classList.add("svg-icon");
-  svgEl.setAttribute("aria-hidden", "true");
-  svgEl.setAttribute("focusable", "false");
-  element.appendChild(svgEl);
 }
 var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   async onload() {
@@ -4946,20 +4907,13 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const { renderSource, widthHintPx } = this.extractEmbeddedWidthHint(source, fenceWidthHintPx);
     const container = el.createDiv({ cls: "puml-embed-block" });
     const actionsEl = container.createDiv({ cls: "puml-embed-actions" });
-    const toggleBtn = actionsEl.createEl("button", { cls: "puml-embed-toggle clickable-icon" });
-    const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn clickable-icon" });
-    const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn clickable-icon" });
-    const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn clickable-icon" });
-    setElementSvgIcon(zoomBtn, ICONS.zoom);
-    setElementSvgIcon(saveBtn, ICONS.save);
-    setElementSvgIcon(copyBtn, ICONS.copy);
-    toggleBtn.setAttr("title", "Toggle code/diagram");
-    toggleBtn.setAttr("aria-label", "Toggle code/diagram");
-    zoomBtn.setAttr("title", "Zoom overlay");
-    zoomBtn.setAttr("aria-label", "Zoom overlay");
-    saveBtn.setAttr("title", "Save image");
+    const toggleBtn = actionsEl.createEl("button", { cls: "puml-embed-toggle" });
+    const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn", text: "Zoom" });
+    const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn", text: "Save" });
+    const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn", text: "Copy" });
+    toggleBtn.setAttr("aria-label", "Toggle code and diagram");
+    zoomBtn.setAttr("aria-label", "Open zoom overlay");
     saveBtn.setAttr("aria-label", "Save image");
-    copyBtn.setAttr("title", "Copy code");
     copyBtn.setAttr("aria-label", "Copy code");
     const diagramPane = container.createDiv({ cls: "puml-embed-diagram" });
     if (widthHintPx) {
@@ -4985,8 +4939,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       if (showCode) {
         diagramPane.hide();
         codePane.show();
-        setElementSvgIcon(toggleBtn, ICONS.diagram);
-        toggleBtn.setAttr("title", "Show diagram");
+        toggleBtn.setText("Diagram");
         toggleBtn.setAttr("aria-label", "Show diagram");
         zoomBtn.addClass("is-hidden");
         saveBtn.addClass("is-hidden");
@@ -4994,8 +4947,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       } else {
         codePane.hide();
         diagramPane.show();
-        setElementSvgIcon(toggleBtn, ICONS.code);
-        toggleBtn.setAttr("title", "Show code");
+        toggleBtn.setText("Code");
         toggleBtn.setAttr("aria-label", "Show code");
         zoomBtn.removeClass("is-hidden");
         saveBtn.removeClass("is-hidden");
@@ -5450,23 +5402,17 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
         void this.reloadEditorFromFile();
       }
     });
-    this.exportPngBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
-    setElementSvgIcon(this.exportPngBtn, ICONS.exportPng);
-    this.exportPngBtn.setAttr("title", "Save PNG image");
+    this.exportPngBtn = toolbar.createEl("button", { cls: "puml-toolbar-export-btn", text: "PNG" });
     this.exportPngBtn.setAttr("aria-label", "Save PNG image");
     this.exportPngBtn.addEventListener("click", () => {
       void this.exportDiagram("png");
     });
-    this.exportSvgBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
-    setElementSvgIcon(this.exportSvgBtn, ICONS.exportSvg);
-    this.exportSvgBtn.setAttr("title", "Save SVG image");
+    this.exportSvgBtn = toolbar.createEl("button", { cls: "puml-toolbar-export-btn", text: "SVG" });
     this.exportSvgBtn.setAttr("aria-label", "Save SVG image");
     this.exportSvgBtn.addEventListener("click", () => {
       void this.exportDiagram("svg");
     });
-    this.exportAsciiBtn = toolbar.createEl("button", { cls: "puml-toolbar-icon-btn clickable-icon" });
-    setElementSvgIcon(this.exportAsciiBtn, ICONS.exportAscii);
-    this.exportAsciiBtn.setAttr("title", "Save ASCII art");
+    this.exportAsciiBtn = toolbar.createEl("button", { cls: "puml-toolbar-export-btn", text: "ASCII" });
     this.exportAsciiBtn.setAttr("aria-label", "Save ASCII art");
     this.exportAsciiBtn.addEventListener("click", () => {
       void this.exportDiagram("txt");

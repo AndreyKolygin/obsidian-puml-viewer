@@ -338,20 +338,13 @@ export default class PUMLViewerPlugin extends Plugin {
 
     const container = el.createDiv({ cls: 'puml-embed-block' });
     const actionsEl = container.createDiv({ cls: 'puml-embed-actions' });
-    const toggleBtn = actionsEl.createEl('button', { cls: 'puml-embed-toggle clickable-icon' });
-    const zoomBtn = actionsEl.createEl('button', { cls: 'puml-embed-zoom-btn clickable-icon' });
-    const saveBtn = actionsEl.createEl('button', { cls: 'puml-embed-save-btn clickable-icon' });
-    const copyBtn = actionsEl.createEl('button', { cls: 'puml-embed-copy-btn clickable-icon' });
-    setElementSvgIcon(zoomBtn, ICONS.zoom);
-    setElementSvgIcon(saveBtn, ICONS.save);
-    setElementSvgIcon(copyBtn, ICONS.copy);
-    toggleBtn.setAttr('title', 'Toggle code/diagram');
-    toggleBtn.setAttr('aria-label', 'Toggle code/diagram');
-    zoomBtn.setAttr('title', 'Zoom overlay');
-    zoomBtn.setAttr('aria-label', 'Zoom overlay');
-    saveBtn.setAttr('title', 'Save image');
+    const toggleBtn = actionsEl.createEl('button', { cls: 'puml-embed-toggle' });
+    const zoomBtn = actionsEl.createEl('button', { cls: 'puml-embed-zoom-btn', text: 'Zoom' });
+    const saveBtn = actionsEl.createEl('button', { cls: 'puml-embed-save-btn', text: 'Save' });
+    const copyBtn = actionsEl.createEl('button', { cls: 'puml-embed-copy-btn', text: 'Copy' });
+    toggleBtn.setAttr('aria-label', 'Toggle code and diagram');
+    zoomBtn.setAttr('aria-label', 'Open zoom overlay');
     saveBtn.setAttr('aria-label', 'Save image');
-    copyBtn.setAttr('title', 'Copy code');
     copyBtn.setAttr('aria-label', 'Copy code');
     const diagramPane = container.createDiv({ cls: 'puml-embed-diagram' });
     if (widthHintPx) {
@@ -383,8 +376,7 @@ export default class PUMLViewerPlugin extends Plugin {
       if (showCode) {
         diagramPane.hide();
         codePane.show();
-        setElementSvgIcon(toggleBtn, ICONS.diagram);
-        toggleBtn.setAttr('title', 'Show diagram');
+        toggleBtn.setText('Diagram');
         toggleBtn.setAttr('aria-label', 'Show diagram');
         zoomBtn.addClass('is-hidden');
         saveBtn.addClass('is-hidden');
@@ -392,8 +384,7 @@ export default class PUMLViewerPlugin extends Plugin {
       } else {
         codePane.hide();
         diagramPane.show();
-        setElementSvgIcon(toggleBtn, ICONS.code);
-        toggleBtn.setAttr('title', 'Show code');
+        toggleBtn.setText('Code');
         toggleBtn.setAttr('aria-label', 'Show code');
         zoomBtn.removeClass('is-hidden');
         saveBtn.removeClass('is-hidden');
@@ -930,25 +921,19 @@ class PUMLViewerView extends ItemView {
       }
     });
 
-    this.exportPngBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn clickable-icon' });
-    setElementSvgIcon(this.exportPngBtn, ICONS.exportPng);
-    this.exportPngBtn.setAttr('title', 'Save PNG image');
+    this.exportPngBtn = toolbar.createEl('button', { cls: 'puml-toolbar-export-btn', text: 'PNG' });
     this.exportPngBtn.setAttr('aria-label', 'Save PNG image');
     this.exportPngBtn.addEventListener('click', () => {
       void this.exportDiagram('png');
     });
 
-    this.exportSvgBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn clickable-icon' });
-    setElementSvgIcon(this.exportSvgBtn, ICONS.exportSvg);
-    this.exportSvgBtn.setAttr('title', 'Save SVG image');
+    this.exportSvgBtn = toolbar.createEl('button', { cls: 'puml-toolbar-export-btn', text: 'SVG' });
     this.exportSvgBtn.setAttr('aria-label', 'Save SVG image');
     this.exportSvgBtn.addEventListener('click', () => {
       void this.exportDiagram('svg');
     });
 
-    this.exportAsciiBtn = toolbar.createEl('button', { cls: 'puml-toolbar-icon-btn clickable-icon' });
-    setElementSvgIcon(this.exportAsciiBtn, ICONS.exportAscii);
-    this.exportAsciiBtn.setAttr('title', 'Save ASCII art');
+    this.exportAsciiBtn = toolbar.createEl('button', { cls: 'puml-toolbar-export-btn', text: 'ASCII' });
     this.exportAsciiBtn.setAttr('aria-label', 'Save ASCII art');
     this.exportAsciiBtn.addEventListener('click', () => {
       void this.exportDiagram('txt');

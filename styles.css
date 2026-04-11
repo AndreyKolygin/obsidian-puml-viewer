@@ -27,6 +27,12 @@
   color: var(--text-normal);
 }
 
+.puml-toolbar-export-btn {
+  min-width: 48px;
+  height: 28px;
+  padding: 4px 8px;
+}
+
 .puml-toolbar-icon-btn svg {
   width: 16px;
   height: 16px;
@@ -165,35 +171,22 @@
 }
 
 .puml-embed-toggle,
-.puml-embed-zoom-btn {
+.puml-embed-zoom-btn,
+.puml-embed-save-btn,
+.puml-embed-copy-btn {
   font-size: 12px;
   line-height: 1;
   padding: 4px 8px;
 }
 
 .puml-embed-actions button {
-  min-width: 30px;
+  min-width: 0;
   height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 4px 8px;
   color: var(--text-normal);
-}
-
-.puml-embed-actions button svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-  pointer-events: none;
-}
-
-.puml-embed-toggle svg,
-.puml-embed-zoom-btn svg,
-.puml-embed-save-btn svg,
-.puml-embed-copy-btn svg {
-  width: 14px;
-  height: 14px;
 }
 
 .puml-embed-actions button.is-hidden {

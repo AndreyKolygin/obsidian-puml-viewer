@@ -1,21 +1,26 @@
 {
   "name": "obsidian-puml-viewer",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "private": true,
   "description": "Renders PlantUML from .puml files and markdown code blocks.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "node esbuild.config.mjs production"
+    "build": "node esbuild.config.mjs production",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "plantuml-encoder": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.16.10",
-    "builtin-modules": "^4.0.0",
     "esbuild": "^0.25.9",
+    "eslint": "^9.25.1",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "globals": "^16.0.0",
     "obsidian": "^1.8.10",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.30.1"
   }
 }

@@ -51,17 +51,6 @@ interface ViewState {
   mode?: ViewMode;
 }
 
-const ICONS = {
-  code: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 7 4 12l4.5 5M15.5 7 20 12l-4.5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  diagram: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="5" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="15" width="6" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9v3h10V9M12 12v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-  zoom: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4.2-4.2M11 8v6M8 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-  save: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  copy: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="5" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>`,
-  exportPng: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><path d="m6.5 16 3.5-3.5 2.4 2.4 2.3-2.3L18 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  exportSvg: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c2.2 0 2.2-8 4.4-8s2.2 8 4.4 8 2.2-8 4.4-8 2.2 8 2.8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="16" r="1.5" fill="currentColor"/><circle cx="8.4" cy="8" r="1.5" fill="currentColor"/><circle cx="12.8" cy="16" r="1.5" fill="currentColor"/><circle cx="17.2" cy="8" r="1.5" fill="currentColor"/></svg>`,
-  exportAscii: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 6.5 19M12 5 17.5 19M8.4 14.5h7.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-} as const;
-
 function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   const parsed = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
   if (parsed.querySelector('parsererror')) return null;
@@ -73,40 +62,6 @@ function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   const imported = document.importNode(svgEl, true) as Element;
   if (imported.tagName.toLowerCase() !== 'svg') return null;
   return imported as SVGSVGElement;
-}
-
-function parseInlineSvgMarkup(svgMarkup: string): SVGSVGElement | null {
-  const parsed = new DOMParser().parseFromString(svgMarkup, 'text/html');
-  const svgEl = parsed.querySelector('svg');
-  if (!svgEl) return null;
-  const imported = document.importNode(svgEl, true) as Element;
-  if (imported.tagName.toLowerCase() !== 'svg') return null;
-  return imported as SVGSVGElement;
-}
-
-function setElementSvgIcon(element: HTMLElement, svgMarkup: string): void {
-  const svgEl = parseSvgMarkup(svgMarkup) ?? parseInlineSvgMarkup(svgMarkup);
-  element.empty();
-  if (!svgEl) return;
-
-  // Align with Obsidian/Lucide inline icon conventions so icons remain visible
-  // even if plugin CSS is not applied yet.
-  if (!svgEl.hasAttribute('xmlns')) {
-    svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  }
-  if (!svgEl.hasAttribute('width')) {
-    svgEl.setAttribute('width', '24');
-  }
-  if (!svgEl.hasAttribute('height')) {
-    svgEl.setAttribute('height', '24');
-  }
-  if (!svgEl.hasAttribute('fill')) {
-    svgEl.setAttribute('fill', 'none');
-  }
-  svgEl.classList.add('svg-icon');
-  svgEl.setAttribute('aria-hidden', 'true');
-  svgEl.setAttribute('focusable', 'false');
-  element.appendChild(svgEl);
 }
 
 export default class PUMLViewerPlugin extends Plugin {

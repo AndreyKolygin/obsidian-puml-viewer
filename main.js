@@ -5622,14 +5622,22 @@ ${error instanceof Error ? error.message : String(error)}`
         new import_obsidian.Notice("Plantuml file is empty.");
         return;
       }
-      const outputPath = (0, import_obsidian.normalizePath)(
+      const defaultOutputPath = (0, import_obsidian.normalizePath)(
         this.currentFile.path.replace(/\.puml$/i, `.${format}`)
       );
+      const outputPath = await this.resolveExportOutputPath(defaultOutputPath);
+      if (!outputPath) {
+        this.statusEl.setText("Export cancelled.");
+        return;
+      }
       const response = await this.plugin.requestDiagram(source, format);
       if (response.status !== 200) {
         throw new Error(`HTTP ${response.status}`);
       }
       const existing = this.app.vault.getAbstractFileByPath(outputPath);
+      if (existing && !(existing instanceof import_obsidian.TFile)) {
+        throw new Error(`Cannot export: "${outputPath}" is not a file.`);
+      }
       if (format === "svg") {
         const contentType = this.plugin.responseContentType(response);
         if (contentType && !contentType.includes("image/svg")) {
@@ -5671,6 +5679,41 @@ ${error instanceof Error ? error.message : String(error)}`
       this.statusEl.setText("Export failed.");
       new import_obsidian.Notice(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+  async resolveExportOutputPath(defaultPath) {
+    const existing = this.app.vault.getAbstractFileByPath(defaultPath);
+    if (!existing) return defaultPath;
+    if (!(existing instanceof import_obsidian.TFile)) {
+      return this.getNextAvailableExportPath(defaultPath);
+    }
+    const action = await this.askExportConflict(defaultPath);
+    if (action === "cancel") return null;
+    if (action === "overwrite") return defaultPath;
+    return this.getNextAvailableExportPath(defaultPath);
+  }
+  getNextAvailableExportPath(path) {
+    const slashIndex = path.lastIndexOf("/");
+    const dir = slashIndex >= 0 ? path.slice(0, slashIndex) : "";
+    const fileName = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+    const dotIndex = fileName.lastIndexOf(".");
+    const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const ext = dotIndex > 0 ? fileName.slice(dotIndex) : "";
+    let index = 1;
+    while (index < 1e4) {
+      const candidateName = `${base}-${index}${ext}`;
+      const candidatePath = (0, import_obsidian.normalizePath)(dir ? `${dir}/${candidateName}` : candidateName);
+      if (!this.app.vault.getAbstractFileByPath(candidatePath)) {
+        return candidatePath;
+      }
+      index += 1;
+    }
+    throw new Error(`Could not find available file name for "${path}".`);
+  }
+  askExportConflict(path) {
+    return new Promise((resolve) => {
+      const modal = new ExportConflictModal(this.app, path, resolve);
+      modal.open();
+    });
   }
   async renderDiagram() {
     this.contentHostEl.empty();
@@ -5902,6 +5945,47 @@ ${error instanceof Error ? error.message : String(error)}`
     for (let i = 1; i <= lineCount; i++) {
       this.editorGutterEl.createDiv({ cls: "puml-viewer-editor-line", text: String(i) });
     }
+  }
+};
+var ExportConflictModal = class extends import_obsidian.Modal {
+  constructor(app, path, onResolve) {
+    super(app);
+    this.resolved = false;
+    this.path = path;
+    this.onResolve = onResolve;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: "File already exists" });
+    contentEl.createEl("p", {
+      text: `The file "${this.path}" already exists. Overwrite it or save as a new file?`
+    });
+    const buttonRow = contentEl.createDiv({ cls: "modal-button-container" });
+    const overwriteBtn = buttonRow.createEl("button", {
+      text: "Overwrite",
+      cls: "mod-warning"
+    });
+    overwriteBtn.addEventListener("click", () => this.finish("overwrite"));
+    const newFileBtn = buttonRow.createEl("button", {
+      text: "Save as new",
+      cls: "mod-cta"
+    });
+    newFileBtn.addEventListener("click", () => this.finish("new-file"));
+    const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
+    cancelBtn.addEventListener("click", () => this.finish("cancel"));
+  }
+  onClose() {
+    this.contentEl.empty();
+    if (this.resolved) return;
+    this.resolved = true;
+    this.onResolve("cancel");
+  }
+  finish(action) {
+    if (this.resolved) return;
+    this.resolved = true;
+    this.onResolve(action);
+    this.close();
   }
 };
 var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {

@@ -3,6 +3,7 @@ import {
   ItemView,
   MarkdownView,
   Menu,
+  Modal,
   Notice,
   normalizePath,
   Plugin,
@@ -19,6 +20,7 @@ const encodePlantuml = encode as (source: string) => string;
 
 type ViewMode = 'view' | 'edit';
 type DiagramFormat = 'svg' | 'png' | 'txt';
+type ExportConflictAction = 'overwrite' | 'new-file' | 'cancel';
 
 interface PUMLViewerSettings {
   serverType: 'plantuml' | 'kroki' | 'local';
@@ -1193,9 +1195,14 @@ class PUMLViewerView extends ItemView {
         return;
       }
 
-      const outputPath = normalizePath(
+      const defaultOutputPath = normalizePath(
         this.currentFile.path.replace(/\.puml$/i, `.${format}`),
       );
+      const outputPath = await this.resolveExportOutputPath(defaultOutputPath);
+      if (!outputPath) {
+        this.statusEl.setText('Export cancelled.');
+        return;
+      }
 
       const response = await this.plugin.requestDiagram(source, format);
 
@@ -1204,6 +1211,9 @@ class PUMLViewerView extends ItemView {
       }
 
       const existing = this.app.vault.getAbstractFileByPath(outputPath);
+      if (existing && !(existing instanceof TFile)) {
+        throw new Error(`Cannot export: "${outputPath}" is not a file.`);
+      }
       if (format === 'svg') {
         const contentType = this.plugin.responseContentType(response);
         if (contentType && !contentType.includes('image/svg')) {
@@ -1247,6 +1257,48 @@ class PUMLViewerView extends ItemView {
       this.statusEl.setText('Export failed.');
       new Notice(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private async resolveExportOutputPath(defaultPath: string): Promise<string | null> {
+    const existing = this.app.vault.getAbstractFileByPath(defaultPath);
+    if (!existing) return defaultPath;
+
+    if (!(existing instanceof TFile)) {
+      return this.getNextAvailableExportPath(defaultPath);
+    }
+
+    const action = await this.askExportConflict(defaultPath);
+    if (action === 'cancel') return null;
+    if (action === 'overwrite') return defaultPath;
+    return this.getNextAvailableExportPath(defaultPath);
+  }
+
+  private getNextAvailableExportPath(path: string): string {
+    const slashIndex = path.lastIndexOf('/');
+    const dir = slashIndex >= 0 ? path.slice(0, slashIndex) : '';
+    const fileName = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+    const dotIndex = fileName.lastIndexOf('.');
+    const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const ext = dotIndex > 0 ? fileName.slice(dotIndex) : '';
+
+    let index = 1;
+    while (index < 10_000) {
+      const candidateName = `${base}-${index}${ext}`;
+      const candidatePath = normalizePath(dir ? `${dir}/${candidateName}` : candidateName);
+      if (!this.app.vault.getAbstractFileByPath(candidatePath)) {
+        return candidatePath;
+      }
+      index += 1;
+    }
+
+    throw new Error(`Could not find available file name for "${path}".`);
+  }
+
+  private askExportConflict(path: string): Promise<ExportConflictAction> {
+    return new Promise((resolve) => {
+      const modal = new ExportConflictModal(this.app, path, resolve);
+      modal.open();
+    });
   }
 
   private async renderDiagram(): Promise<void> {
@@ -1514,6 +1566,59 @@ class PUMLViewerView extends ItemView {
     for (let i = 1; i <= lineCount; i++) {
       this.editorGutterEl.createDiv({ cls: 'puml-viewer-editor-line', text: String(i) });
     }
+  }
+}
+
+class ExportConflictModal extends Modal {
+  private resolved = false;
+  private readonly onResolve: (action: ExportConflictAction) => void;
+  private readonly path: string;
+
+  constructor(app: App, path: string, onResolve: (action: ExportConflictAction) => void) {
+    super(app);
+    this.path = path;
+    this.onResolve = onResolve;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl('h3', { text: 'File already exists' });
+    contentEl.createEl('p', {
+      text: `The file "${this.path}" already exists. Overwrite it or save as a new file?`,
+    });
+
+    const buttonRow = contentEl.createDiv({ cls: 'modal-button-container' });
+
+    const overwriteBtn = buttonRow.createEl('button', {
+      text: 'Overwrite',
+      cls: 'mod-warning',
+    });
+    overwriteBtn.addEventListener('click', () => this.finish('overwrite'));
+
+    const newFileBtn = buttonRow.createEl('button', {
+      text: 'Save as new',
+      cls: 'mod-cta',
+    });
+    newFileBtn.addEventListener('click', () => this.finish('new-file'));
+
+    const cancelBtn = buttonRow.createEl('button', { text: 'Cancel' });
+    cancelBtn.addEventListener('click', () => this.finish('cancel'));
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    if (this.resolved) return;
+    this.resolved = true;
+    this.onResolve('cancel');
+  }
+
+  private finish(action: ExportConflictAction): void {
+    if (this.resolved) return;
+    this.resolved = true;
+    this.onResolve(action);
+    this.close();
   }
 }
 

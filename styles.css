@@ -268,6 +268,39 @@
   height: auto;
 }
 
+.puml-embed-diagram--constrained {
+  max-width: var(--puml-embed-max-width);
+}
+
+.puml-embed-diagram--align-left {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.puml-embed-diagram--align-center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.puml-embed-diagram--align-right {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.puml-embed-svg,
+.puml-zoom-svg {
+  display: block;
+  height: auto;
+}
+
+.puml-embed-svg {
+  width: 100%;
+}
+
+.puml-is-hidden {
+  display: none !important;
+}
+
 .puml-embed-code {
   margin: 0;
   width: 100%;

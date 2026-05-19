@@ -10,13 +10,16 @@ import {
   PluginSettingTab,
   Setting,
   TFile,
+  ViewStateResult,
   WorkspaceLeaf,
   requestUrl,
 } from 'obsidian';
 import { encode } from 'plantuml-encoder';
 
 const VIEW_TYPE_PUML = 'puml-viewer';
-const encodePlantuml = encode as (source: string) => string;
+const encodePlantuml = encode;
+const CSS_AUTO = 'auto';
+const CSS_NONE = 'none';
 
 type ViewMode = 'view' | 'edit';
 type DiagramFormat = 'svg' | 'png' | 'txt';
@@ -46,7 +49,7 @@ const DEFAULT_SETTINGS: PUMLViewerSettings = {
   embeddedDiagramAlign: 'center',
 };
 
-interface ViewState {
+interface PUMLViewState extends Record<string, unknown> {
   file?: string;
   mode?: ViewMode;
 }
@@ -59,7 +62,7 @@ function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
 
   // In Obsidian/Electron, cross-realm `instanceof SVGSVGElement` checks can fail.
   // Validate by tag name and return the imported node as an SVG root element.
-  const imported = document.importNode(svgEl, true) as Element;
+  const imported = window.activeDocument.importNode(svgEl, true) as Element;
   if (imported.tagName.toLowerCase() !== 'svg') return null;
   return imported as SVGSVGElement;
 }
@@ -158,7 +161,7 @@ export default class PUMLViewerPlugin extends Plugin {
       active: true,
       state: { file: file.path },
     });
-    await this.app.workspace.revealLeaf(leaf);
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 
   buildRenderUrl(source: string): string {
@@ -273,10 +276,9 @@ export default class PUMLViewerPlugin extends Plugin {
     }
 
     const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = window.activeDocument.body.createEl('a');
     link.href = objectUrl;
     link.download = `${baseName}.${format}`;
-    document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(objectUrl);
@@ -305,22 +307,15 @@ export default class PUMLViewerPlugin extends Plugin {
     copyBtn.setAttr('aria-label', 'Copy code');
     const diagramPane = container.createDiv({ cls: 'puml-embed-diagram' });
     if (widthHintPx) {
-      const align =
-        this.settings.embeddedDiagramAlign === 'left'
-          ? { 'margin-left': '0', 'margin-right': 'auto' }
-          : this.settings.embeddedDiagramAlign === 'right'
-            ? { 'margin-left': 'auto', 'margin-right': '0' }
-            : { 'margin-left': 'auto', 'margin-right': 'auto' };
-      diagramPane.setCssProps({
-        'max-width': `${widthHintPx}px`,
-        ...align,
-      });
+      diagramPane.addClass('puml-embed-diagram--constrained');
+      diagramPane.style.setProperty('--puml-embed-max-width', `${widthHintPx}px`);
+      diagramPane.addClass(`puml-embed-diagram--align-${this.settings.embeddedDiagramAlign}`);
     }
     const codePane = container.createEl('pre', { cls: 'puml-embed-code' });
     const codeEl = codePane.createEl('code', { cls: 'puml-embed-code-content' });
     const lines = source.split('\n');
     lines.forEach((line, index) => {
-      const lineEl = codeEl.createEl('span', { cls: 'puml-embed-code-line' });
+      const lineEl = codeEl.createSpan({ cls: 'puml-embed-code-line' });
       this.renderPlantUmlHighlightedLine(lineEl, line);
       if (index < lines.length - 1) {
         lineEl.appendText('\n');
@@ -361,56 +356,32 @@ export default class PUMLViewerPlugin extends Plugin {
     }
 
     const openZoomOverlay = async () => {
-      const overlayEl = document.createElement('div');
-      overlayEl.className = 'puml-zoom-overlay';
+      const overlayEl = window.activeDocument.body.createDiv({ cls: 'puml-zoom-overlay' });
 
-      const panelEl = document.createElement('div');
-      panelEl.className = 'puml-zoom-panel';
-      overlayEl.appendChild(panelEl);
+      const panelEl = overlayEl.createDiv({ cls: 'puml-zoom-panel' });
 
-      const headerEl = document.createElement('div');
-      headerEl.className = 'puml-zoom-header';
-      panelEl.appendChild(headerEl);
+      const headerEl = panelEl.createDiv({ cls: 'puml-zoom-header' });
 
-      const headerSpacerEl = document.createElement('div');
-      headerEl.appendChild(headerSpacerEl);
+      headerEl.createDiv();
 
-      const controlsEl = document.createElement('div');
-      controlsEl.className = 'puml-zoom-controls';
-      headerEl.appendChild(controlsEl);
+      const controlsEl = headerEl.createDiv({ cls: 'puml-zoom-controls' });
 
-      const zoomOutBtn = document.createElement('button');
-      zoomOutBtn.textContent = '-';
-      controlsEl.appendChild(zoomOutBtn);
+      const zoomOutBtn = controlsEl.createEl('button', { text: '-' });
 
-      const zoomResetBtn = document.createElement('button');
-      zoomResetBtn.textContent = '100%';
-      controlsEl.appendChild(zoomResetBtn);
+      const zoomResetBtn = controlsEl.createEl('button', { text: '100%' });
 
-      const zoomInBtn = document.createElement('button');
-      zoomInBtn.textContent = '+';
-      controlsEl.appendChild(zoomInBtn);
+      const zoomInBtn = controlsEl.createEl('button', { text: '+' });
 
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'puml-zoom-close';
-      closeBtn.textContent = 'Close';
-      headerEl.appendChild(closeBtn);
+      const closeBtn = headerEl.createEl('button', { cls: 'puml-zoom-close', text: 'Close' });
 
-      const contentEl = document.createElement('div');
-      contentEl.className = 'puml-zoom-content';
-      panelEl.appendChild(contentEl);
+      const contentEl = panelEl.createDiv({ cls: 'puml-zoom-content' });
 
-      const canvasEl = document.createElement('div');
-      canvasEl.className = 'puml-zoom-canvas';
-      contentEl.appendChild(canvasEl);
+      const canvasEl = contentEl.createDiv({ cls: 'puml-zoom-canvas' });
 
-      const loadingEl = document.createElement('div');
-      loadingEl.className = 'puml-loading';
-      loadingEl.textContent = 'Generating diagram...';
-      canvasEl.appendChild(loadingEl);
+      const loadingEl = canvasEl.createDiv({ cls: 'puml-loading', text: 'Generating diagram...' });
 
       let zoom = 1;
-      let renderedEl: HTMLElement | null = null;
+      let renderedEl: HTMLElement | SVGSVGElement | null = null;
       let baseWidth = 0;
       let centeredInitially = false;
       let isPanning = false;
@@ -421,11 +392,9 @@ export default class PUMLViewerPlugin extends Plugin {
       const clampZoom = (value: number) => Math.min(8, Math.max(0.1, Math.round(value * 100) / 100));
       const applyZoom = () => {
         if (!renderedEl || baseWidth <= 0) return;
-        renderedEl.setCssProps({
-          'max-width': 'none',
-          width: `${Math.max(1, Math.round(baseWidth * zoom))}px`,
-          height: 'auto',
-        });
+        renderedEl.style.maxWidth = CSS_NONE;
+        renderedEl.style.width = `${Math.max(1, Math.round(baseWidth * zoom))}px`;
+        renderedEl.style.height = CSS_AUTO;
       };
       const setZoom = (value: number) => {
         zoom = clampZoom(value);
@@ -445,7 +414,7 @@ export default class PUMLViewerPlugin extends Plugin {
       const centerViewportOnce = () => {
         if (centeredInitially) return;
         centeredInitially = true;
-        requestAnimationFrame(() => {
+        window.activeWindow.requestAnimationFrame(() => {
           centerViewport();
         });
       };
@@ -494,7 +463,7 @@ export default class PUMLViewerPlugin extends Plugin {
       window.addEventListener('mouseup', onPanMouseUp);
 
       const closeOverlay = () => {
-        document.removeEventListener('keydown', onKeyDown);
+        window.activeDocument.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('resize', fitToViewport);
         window.removeEventListener('mousemove', onPanMouseMove);
         window.removeEventListener('mouseup', onPanMouseUp);
@@ -513,9 +482,8 @@ export default class PUMLViewerPlugin extends Plugin {
         }
       });
       closeBtn.addEventListener('click', closeOverlay);
-      document.addEventListener('keydown', onKeyDown);
+      window.activeDocument.addEventListener('keydown', onKeyDown);
       window.addEventListener('resize', fitToViewport);
-      document.body.appendChild(overlayEl);
 
       try {
         if (this.settings.imageFormat === 'svg') {
@@ -535,10 +503,10 @@ export default class PUMLViewerPlugin extends Plugin {
           }
 
           loadingEl.remove();
-          const svgHost = document.createElement('div');
+          const svgHost = canvasEl.createDiv();
           const svgEl = parseSvgMarkup(response.text);
           if (svgEl) {
-            svgEl.setCssProps({ display: 'block' });
+            svgEl.addClass('puml-zoom-svg');
             let baseSvgWidth = 0;
             try {
               const bbox = svgEl.getBBox();
@@ -563,13 +531,10 @@ export default class PUMLViewerPlugin extends Plugin {
           }
           canvasEl.appendChild(svgHost);
         } else {
-          const img = document.createElement('img');
-          img.className = 'puml-zoom-image';
+          const img = canvasEl.createEl('img', { cls: 'puml-zoom-image puml-is-hidden' });
           img.alt = 'PlantUML diagram';
-          img.setCssProps({ display: 'none' });
           const objectUrl = await this.fetchPngObjectUrl(renderSource);
           img.src = objectUrl;
-          canvasEl.appendChild(img);
 
           img.addEventListener(
             'load',
@@ -578,7 +543,7 @@ export default class PUMLViewerPlugin extends Plugin {
               renderedEl = img;
               baseWidth = img.naturalWidth || img.getBoundingClientRect().width || 1000;
               fitToViewport();
-              img.setCssProps({ display: 'block' });
+              img.removeClass('puml-is-hidden');
               centerViewportOnce();
               URL.revokeObjectURL(objectUrl);
             },
@@ -589,22 +554,17 @@ export default class PUMLViewerPlugin extends Plugin {
             () => {
               loadingEl.remove();
               URL.revokeObjectURL(objectUrl);
-              const errorEl = document.createElement('div');
-              errorEl.className = 'puml-embed-error';
-              errorEl.textContent = 'Failed to load PNG diagram.';
-              canvasEl.appendChild(errorEl);
+              canvasEl.createDiv({ cls: 'puml-embed-error', text: 'Failed to load PNG diagram.' });
             },
             { once: true },
           );
         }
       } catch (error) {
         loadingEl.remove();
-        const errorEl = document.createElement('div');
-        errorEl.className = 'puml-embed-error';
-        errorEl.textContent = `Failed to render diagram: ${
-          error instanceof Error ? error.message : String(error)
-        }`;
-        canvasEl.appendChild(errorEl);
+        canvasEl.createDiv({
+          cls: 'puml-embed-error',
+          text: `Failed to render diagram: ${error instanceof Error ? error.message : String(error)}`,
+        });
       }
     };
 
@@ -668,14 +628,13 @@ export default class PUMLViewerPlugin extends Plugin {
         const svgHost = diagramPane.createDiv();
         const svgEl = parseSvgMarkup(response.text);
         if (svgEl) {
-          svgEl.setCssProps({ width: '100%', height: 'auto', display: 'block' });
+          svgEl.addClass('puml-embed-svg');
           svgHost.appendChild(svgEl);
         } else {
           throw new Error('Response is not valid SVG content.');
         }
       } else {
-        const img = diagramPane.createEl('img', { cls: 'puml-embed-image' });
-        img.setCssProps({ display: 'none' });
+        const img = diagramPane.createEl('img', { cls: 'puml-embed-image puml-is-hidden' });
         const objectUrl = await this.fetchPngObjectUrl(renderSource);
         img.src = objectUrl;
         img.alt = 'PlantUML diagram';
@@ -683,7 +642,7 @@ export default class PUMLViewerPlugin extends Plugin {
           'load',
           () => {
             loadingEl.remove();
-            img.setCssProps({ display: 'block' });
+            img.removeClass('puml-is-hidden');
             URL.revokeObjectURL(objectUrl);
           },
           { once: true },
@@ -928,17 +887,19 @@ class PUMLViewerView extends ItemView {
     );
   }
 
-  async setState(state: ViewState, result: unknown): Promise<void> {
+  async setState(state: unknown, result: ViewStateResult): Promise<void> {
     await super.setState(state, result);
 
-    if (state.mode) {
-      this.mode = state.mode;
+    const viewState = (state ?? {}) as PUMLViewState;
+
+    if (viewState.mode) {
+      this.mode = viewState.mode;
       this.updateToolbarState();
     }
 
-    if (!state.file) return;
+    if (!viewState.file) return;
 
-    const file = this.app.vault.getAbstractFileByPath(state.file);
+    const file = this.app.vault.getAbstractFileByPath(viewState.file);
     if (file instanceof TFile) {
       this.currentFile = file;
       void this.plugin.rememberLastPuml(file.path);
@@ -948,19 +909,20 @@ class PUMLViewerView extends ItemView {
     }
   }
 
-  getState(): ViewState {
+  getState(): Record<string, unknown> {
     return { file: this.currentFile?.path, mode: this.mode };
   }
 
   private async loadFileFromState(): Promise<void> {
-    const state = this.leaf.getViewState().state as ViewState | undefined;
-    if (state.mode) {
-      this.mode = state.mode;
+    const state = this.leaf.getViewState().state;
+    const mode = state?.mode;
+    if (mode === 'view' || mode === 'edit') {
+      this.mode = mode;
       this.updateToolbarState();
     }
 
     const candidates: string[] = [];
-    if (state?.file) candidates.push(state.file);
+    if (typeof state?.file === 'string') candidates.push(state.file);
 
     const activeFile = this.app.workspace.getActiveFile();
     if (activeFile?.extension === 'puml') candidates.push(activeFile.path);
@@ -1306,9 +1268,8 @@ class PUMLViewerView extends ItemView {
         svgHost.appendChild(svgEl);
       } else {
         const img = renderRoot.createEl('img', {
-          cls: 'puml-viewer-image',
+          cls: 'puml-viewer-image puml-is-hidden',
         });
-        img.setCssProps({ display: 'none' });
         const objectUrl = await this.plugin.fetchPngObjectUrl(source);
         img.src = objectUrl;
         img.alt = this.currentFile.name;
@@ -1316,7 +1277,7 @@ class PUMLViewerView extends ItemView {
           'load',
           () => {
             loadingEl.remove();
-            img.setCssProps({ display: 'block' });
+            img.removeClass('puml-is-hidden');
             this.statusEl.setText(`Rendered: ${this.currentFile?.name ?? ''}`);
             URL.revokeObjectURL(objectUrl);
           },
@@ -1408,11 +1369,9 @@ class PUMLViewerView extends ItemView {
       const baseWidth = this.getImageBaseWidth(imageEl);
 
       if (baseWidth > 0) {
-        imageEl.setCssProps({
-          'max-width': 'none',
-          width: `${Math.max(1, Math.round(baseWidth * this.zoom))}px`,
-          height: 'auto',
-        });
+        imageEl.style.maxWidth = CSS_NONE;
+        imageEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
+        imageEl.style.height = CSS_AUTO;
       } else {
         imageEl.addEventListener(
           'load',
@@ -1432,11 +1391,9 @@ class PUMLViewerView extends ItemView {
 
     if (!(baseWidth > 0)) return;
 
-    svgEl.setCssProps({
-      'max-width': 'none',
-      width: `${Math.max(1, Math.round(baseWidth * this.zoom))}px`,
-      height: 'auto',
-    });
+    svgEl.style.maxWidth = CSS_NONE;
+    svgEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
+    svgEl.style.height = CSS_AUTO;
   }
 
   private bindMainViewPanning(): void {
@@ -1600,7 +1557,8 @@ class PUMLViewerSettingTab extends PluginSettingTab {
           .addOption('kroki', 'Kroki')
           .addOption('local', 'Local')
           .setValue(this.plugin.settings.serverType)
-          .onChange(async (value: 'plantuml' | 'kroki' | 'local') => {
+          .onChange(async (value) => {
+            if (value !== 'plantuml' && value !== 'kroki' && value !== 'local') return;
             this.plugin.settings.serverType = value;
             await this.plugin.saveSettings();
           }),
@@ -1653,7 +1611,8 @@ class PUMLViewerSettingTab extends PluginSettingTab {
           .addOption('svg', 'SVG')
           .addOption('png', 'PNG')
           .setValue(this.plugin.settings.imageFormat)
-          .onChange(async (value: 'svg' | 'png') => {
+          .onChange(async (value) => {
+            if (value !== 'svg' && value !== 'png') return;
             this.plugin.settings.imageFormat = value;
             await this.plugin.saveSettings();
           }),
@@ -1677,7 +1636,8 @@ class PUMLViewerSettingTab extends PluginSettingTab {
           .addOption('diagram', 'Diagram')
           .addOption('code', 'Code')
           .setValue(this.plugin.settings.embeddedDefaultView)
-          .onChange(async (value: 'diagram' | 'code') => {
+          .onChange(async (value) => {
+            if (value !== 'diagram' && value !== 'code') return;
             this.plugin.settings.embeddedDefaultView = value;
             await this.plugin.saveSettings();
           }),
@@ -1692,7 +1652,8 @@ class PUMLViewerSettingTab extends PluginSettingTab {
           .addOption('center', 'Center')
           .addOption('right', 'Right')
           .setValue(this.plugin.settings.embeddedDiagramAlign)
-          .onChange(async (value: 'left' | 'center' | 'right') => {
+          .onChange(async (value) => {
+            if (value !== 'left' && value !== 'center' && value !== 'right') return;
             this.plugin.settings.embeddedDiagramAlign = value;
             await this.plugin.saveSettings();
             this.plugin.rerenderMarkdownPreviews();

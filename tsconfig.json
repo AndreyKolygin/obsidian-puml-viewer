@@ -6,9 +6,8 @@
     "lib": ["DOM", "ES2020"],
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
 }

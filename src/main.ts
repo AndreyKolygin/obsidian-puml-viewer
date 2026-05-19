@@ -54,6 +54,32 @@ interface PUMLViewState extends Record<string, unknown> {
   mode?: ViewMode;
 }
 
+function parseSvgLength(value: string | null): number {
+  if (!value) return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeSvgForResponsiveLayout(svgEl: SVGSVGElement): void {
+  const viewBox = svgEl.getAttribute('viewBox')?.trim() ?? '';
+  if (!viewBox) {
+    const width = parseSvgLength(svgEl.getAttribute('width'));
+    const height = parseSvgLength(svgEl.getAttribute('height'));
+    if (width > 0 && height > 0) {
+      svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    }
+  }
+
+  // Keep diagram geometry responsive when container width is constrained.
+  if (!svgEl.getAttribute('preserveAspectRatio')) {
+    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  }
+
+  // Fixed root dimensions can force stretching when CSS constrains only width.
+  svgEl.removeAttribute('width');
+  svgEl.removeAttribute('height');
+}
+
 function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   const parsed = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
   if (parsed.querySelector('parsererror')) return null;
@@ -64,7 +90,9 @@ function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {
   // Validate by tag name and return the imported node as an SVG root element.
   const imported = window.activeDocument.importNode(svgEl, true) as Element;
   if (imported.tagName.toLowerCase() !== 'svg') return null;
-  return imported as SVGSVGElement;
+  const normalized = imported as SVGSVGElement;
+  normalizeSvgForResponsiveLayout(normalized);
+  return normalized;
 }
 
 export default class PUMLViewerPlugin extends Plugin {

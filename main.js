@@ -4710,6 +4710,26 @@ var DEFAULT_SETTINGS = {
   embeddedDefaultView: "diagram",
   embeddedDiagramAlign: "center"
 };
+function parseSvgLength(value) {
+  if (!value) return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function normalizeSvgForResponsiveLayout(svgEl) {
+  const viewBox = svgEl.getAttribute("viewBox")?.trim() ?? "";
+  if (!viewBox) {
+    const width = parseSvgLength(svgEl.getAttribute("width"));
+    const height = parseSvgLength(svgEl.getAttribute("height"));
+    if (width > 0 && height > 0) {
+      svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    }
+  }
+  if (!svgEl.getAttribute("preserveAspectRatio")) {
+    svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  }
+  svgEl.removeAttribute("width");
+  svgEl.removeAttribute("height");
+}
 function parseSvgMarkup(svgMarkup) {
   const parsed = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
   if (parsed.querySelector("parsererror")) return null;
@@ -4717,7 +4737,9 @@ function parseSvgMarkup(svgMarkup) {
   if (!svgEl || svgEl.tagName.toLowerCase() !== "svg") return null;
   const imported = window.activeDocument.importNode(svgEl, true);
   if (imported.tagName.toLowerCase() !== "svg") return null;
-  return imported;
+  const normalized = imported;
+  normalizeSvgForResponsiveLayout(normalized);
+  return normalized;
 }
 var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   async onload() {

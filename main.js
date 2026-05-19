@@ -4715,6 +4715,16 @@ function parseSvgLength(value) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
+function stripWidthHeightFromInlineStyle(styleValue) {
+  const chunks = styleValue.split(";").map((chunk) => chunk.trim()).filter((chunk) => chunk.length > 0);
+  const kept = chunks.filter((chunk) => {
+    const colonIdx = chunk.indexOf(":");
+    if (colonIdx <= 0) return true;
+    const key = chunk.slice(0, colonIdx).trim().toLowerCase();
+    return key !== "width" && key !== "height";
+  });
+  return kept.join("; ");
+}
 function normalizeSvgForResponsiveLayout(svgEl) {
   const viewBox = svgEl.getAttribute("viewBox")?.trim() ?? "";
   if (!viewBox) {
@@ -4724,11 +4734,18 @@ function normalizeSvgForResponsiveLayout(svgEl) {
       svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
     }
   }
-  if (!svgEl.getAttribute("preserveAspectRatio")) {
-    svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  }
+  svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
   svgEl.removeAttribute("width");
   svgEl.removeAttribute("height");
+  const styleAttr = svgEl.getAttribute("style");
+  if (styleAttr) {
+    const sanitizedStyle = stripWidthHeightFromInlineStyle(styleAttr);
+    if (sanitizedStyle.length > 0) {
+      svgEl.setAttribute("style", sanitizedStyle);
+    } else {
+      svgEl.removeAttribute("style");
+    }
+  }
 }
 function parseSvgMarkup(svgMarkup) {
   const parsed = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");

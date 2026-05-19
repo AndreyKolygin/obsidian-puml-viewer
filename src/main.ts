@@ -60,6 +60,22 @@ function parseSvgLength(value: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function stripWidthHeightFromInlineStyle(styleValue: string): string {
+  const chunks = styleValue
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+
+  const kept = chunks.filter((chunk) => {
+    const colonIdx = chunk.indexOf(':');
+    if (colonIdx <= 0) return true;
+    const key = chunk.slice(0, colonIdx).trim().toLowerCase();
+    return key !== 'width' && key !== 'height';
+  });
+
+  return kept.join('; ');
+}
+
 function normalizeSvgForResponsiveLayout(svgEl: SVGSVGElement): void {
   const viewBox = svgEl.getAttribute('viewBox')?.trim() ?? '';
   if (!viewBox) {
@@ -70,14 +86,22 @@ function normalizeSvgForResponsiveLayout(svgEl: SVGSVGElement): void {
     }
   }
 
-  // Keep diagram geometry responsive when container width is constrained.
-  if (!svgEl.getAttribute('preserveAspectRatio')) {
-    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  }
+  // PlantUML often emits preserveAspectRatio="none", which stretches the diagram.
+  svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
   // Fixed root dimensions can force stretching when CSS constrains only width.
   svgEl.removeAttribute('width');
   svgEl.removeAttribute('height');
+
+  const styleAttr = svgEl.getAttribute('style');
+  if (styleAttr) {
+    const sanitizedStyle = stripWidthHeightFromInlineStyle(styleAttr);
+    if (sanitizedStyle.length > 0) {
+      svgEl.setAttribute('style', sanitizedStyle);
+    } else {
+      svgEl.removeAttribute('style');
+    }
+  }
 }
 
 function parseSvgMarkup(svgMarkup: string): SVGSVGElement | null {

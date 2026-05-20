@@ -1,6 +1,6 @@
 # PUML Viewer for Obsidian
 
-A plugin for Obsidian that renders PlantUML from `.puml` files and markdown code blocks.
+A plugin for Obsidian that renders PlantUML from `.puml` files and renders PlantUML/Mermaid from markdown code blocks.
 
 ## Features
 
@@ -20,6 +20,7 @@ A plugin for Obsidian that renders PlantUML from `.puml` files and markdown code
 - Startup recovery: reopen and render previously opened `.puml` after Obsidian restart
 - Markdown embedded rendering for fenced blocks:
   - ` ```plantuml `
+  - ` ```mermaid `
   - switch between `View Code` and diagram
   - `Zoom` overlay with drag-to-pan and zoom controls
   - save diagram with format chooser (`Save as PNG` / `Save as SVG`)
@@ -83,6 +84,15 @@ Bob -> Alice: hello
 ```
 ~~~
 
+Mermaid block:
+
+~~~md
+```mermaid
+flowchart LR
+  A --> B
+```
+~~~
+
 Block with width hint:
 
 ~~~md
@@ -118,6 +128,8 @@ Export actions are available directly from the rendered block when you need to r
   - `PlantUML URL` (example: `https://www.plantuml.com/plantuml`)
   - `Kroki URL` (example: `https://kroki.io`)
   - `Local URL` (example: `http://localhost:8000`)
+- `Kroki diagram type`: `PlantUML` / `Mermaid`
+  - Used as default for Kroki requests when diagram type is not explicitly implied by code block language.
 - `Image format`: default render format for viewer (`SVG` or `PNG`)
 - `Embedded block default view`: show diagram or code first
 - `Embedded diagram alignment`: `left` / `center` / `right` (default `center`)

@@ -4703,6 +4703,7 @@ var DEFAULT_SETTINGS = {
   serverType: "plantuml",
   plantumlServerUrl: "https://www.plantuml.com/plantuml",
   krokiServerUrl: "https://kroki.io",
+  krokiDiagramType: "plantuml",
   localServerUrl: "http://localhost:8000",
   imageFormat: "svg",
   autoRefresh: true,
@@ -4782,13 +4783,14 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       if (activeLeaf?.view.getViewType() === VIEW_TYPE_PUML) return;
       void this.activatePUMLView(activeFile);
     });
-    for (const lang of ["plantuml"]) {
+    for (const lang of ["plantuml", "mermaid"]) {
       this.registerMarkdownCodeBlockProcessor(lang, async (source, el, ctx) => {
         const fenceWidthHintPx = this.extractFenceWidthHint(
           ctx.getSectionInfo(el)?.text ?? "",
-          source
+          source,
+          lang
         );
-        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx);
+        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, lang);
       });
     }
     this.addSettingTab(new PUMLViewerSettingTab(this.app, this));
@@ -4835,12 +4837,13 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     });
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
-  buildRenderUrl(source) {
+  buildRenderUrl(source, diagramType) {
     const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, "");
     const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
     if (this.settings.serverType === "kroki") {
-      return `${normalizedBase}/plantuml/${format}/${encoded}`;
+      const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
+      return `${normalizedBase}/${resolvedDiagramType}/${format}/${encoded}`;
     }
     return `${normalizedBase}/${format}/${encoded}`;
   }
@@ -4864,12 +4867,16 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const headers = response.headers ?? {};
     return headers["content-type"] ?? headers["Content-Type"] ?? "";
   }
-  async requestDiagram(source, format) {
+  async requestDiagram(source, format, diagramType) {
     const normalizedBase = this.normalizedServerBase();
+    if (diagramType === "mermaid" && this.settings.serverType !== "kroki") {
+      throw new Error('Mermaid rendering requires server type "Kroki".');
+    }
     if (this.settings.serverType === "kroki") {
+      const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       const accept = format === "svg" ? "image/svg+xml" : format === "png" ? "image/png" : "text/plain";
       return (0, import_obsidian.requestUrl)({
-        url: `${normalizedBase}/plantuml/${format}`,
+        url: `${normalizedBase}/${resolvedDiagramType}/${format}`,
         method: "POST",
         body: source,
         headers: {
@@ -4886,8 +4893,8 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       throw: false
     });
   }
-  async fetchPngObjectUrl(source) {
-    const response = await this.requestDiagram(source, "png");
+  async fetchPngObjectUrl(source, diagramType) {
+    const response = await this.requestDiagram(source, "png", diagramType);
     if (response.status !== 200) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -4903,8 +4910,8 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const blob = new Blob([response.arrayBuffer], { type: "image/png" });
     return URL.createObjectURL(blob);
   }
-  async downloadDiagramAs(source, format, baseName = "diagram") {
-    const response = await this.requestDiagram(source, format);
+  async downloadDiagramAs(source, format, baseName = "diagram", diagramType) {
+    const response = await this.requestDiagram(source, format, diagramType);
     if (response.status !== 200) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -4940,10 +4947,11 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     link.remove();
     URL.revokeObjectURL(objectUrl);
   }
-  async downloadDiagram(source, baseName = "diagram") {
-    await this.downloadDiagramAs(source, this.settings.imageFormat, baseName);
+  async downloadDiagram(source, baseName = "diagram", diagramType) {
+    await this.downloadDiagramAs(source, this.settings.imageFormat, baseName, diagramType);
   }
-  async renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx) {
+  async renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, diagramType) {
+    const diagramLabel = diagramType === "mermaid" ? "Mermaid" : "PlantUML";
     const { renderSource, widthHintPx } = this.extractEmbeddedWidthHint(source, fenceWidthHintPx);
     const container = el.createDiv({ cls: "puml-embed-block" });
     const actionsEl = container.createDiv({ cls: "puml-embed-actions" });
@@ -4966,7 +4974,11 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const lines = source.split("\n");
     lines.forEach((line, index) => {
       const lineEl = codeEl.createSpan({ cls: "puml-embed-code-line" });
-      this.renderPlantUmlHighlightedLine(lineEl, line);
+      if (diagramType === "plantuml") {
+        this.renderPlantUmlHighlightedLine(lineEl, line);
+      } else {
+        lineEl.setText(line);
+      }
       if (index < lines.length - 1) {
         lineEl.appendText("\n");
       }
@@ -4998,7 +5010,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     });
     applyToggleState();
     if (!renderSource.trim()) {
-      diagramPane.createDiv({ cls: "puml-embed-error", text: "PlantUML block is empty." });
+      diagramPane.createDiv({ cls: "puml-embed-error", text: `${diagramLabel} block is empty.` });
       return;
     }
     const openZoomOverlay = async () => {
@@ -5112,7 +5124,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       window.addEventListener("resize", fitToViewport);
       try {
         if (this.settings.imageFormat === "svg") {
-          const response = await this.requestDiagram(renderSource, "svg");
+          const response = await this.requestDiagram(renderSource, "svg", diagramType);
           if (response.status !== 200) {
             throw new Error(`HTTP ${response.status}`);
           }
@@ -5154,8 +5166,8 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
           canvasEl.appendChild(svgHost);
         } else {
           const img = canvasEl.createEl("img", { cls: "puml-zoom-image puml-is-hidden" });
-          img.alt = "PlantUML diagram";
-          const objectUrl = await this.fetchPngObjectUrl(renderSource);
+          img.alt = `${diagramLabel} diagram`;
+          const objectUrl = await this.fetchPngObjectUrl(renderSource, diagramType);
           img.src = objectUrl;
           img.addEventListener(
             "load",
@@ -5196,7 +5208,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       menu.addItem(
         (item) => item.setTitle("Save as PNG").onClick(async () => {
           try {
-            await this.downloadDiagramAs(renderSource, "png", "plantuml-diagram");
+            await this.downloadDiagramAs(renderSource, "png", `${diagramType}-diagram`, diagramType);
             new import_obsidian.Notice("Diagram saved as PNG");
           } catch (error) {
             new import_obsidian.Notice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -5206,7 +5218,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       menu.addItem(
         (item) => item.setTitle("Save as SVG").onClick(async () => {
           try {
-            await this.downloadDiagramAs(renderSource, "svg", "plantuml-diagram");
+            await this.downloadDiagramAs(renderSource, "svg", `${diagramType}-diagram`, diagramType);
             new import_obsidian.Notice("Diagram saved as SVG");
           } catch (error) {
             new import_obsidian.Notice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -5219,7 +5231,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new import_obsidian.Notice("Plantuml code copied.");
+          new import_obsidian.Notice(`${diagramLabel} code copied.`);
         } catch (error) {
           new import_obsidian.Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -5228,7 +5240,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const loadingEl = diagramPane.createDiv({ cls: "puml-loading", text: "Generating diagram..." });
     try {
       if (this.settings.imageFormat === "svg") {
-        const response = await this.requestDiagram(renderSource, "svg");
+        const response = await this.requestDiagram(renderSource, "svg", diagramType);
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -5252,9 +5264,9 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
         }
       } else {
         const img = diagramPane.createEl("img", { cls: "puml-embed-image puml-is-hidden" });
-        const objectUrl = await this.fetchPngObjectUrl(renderSource);
+        const objectUrl = await this.fetchPngObjectUrl(renderSource, diagramType);
         img.src = objectUrl;
-        img.alt = "PlantUML diagram";
+        img.alt = `${diagramLabel} diagram`;
         img.addEventListener(
           "load",
           () => {
@@ -5299,8 +5311,12 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     lines.splice(firstNonEmpty, 1);
     return { renderSource: lines.join("\n"), widthHintPx };
   }
-  extractFenceWidthHint(sectionText, source) {
-    const regex = /`{3,}\s*plantuml(?:\s+\|(\d{2,4}))?\s*\n([\s\S]*?)`{3,}/gi;
+  extractFenceWidthHint(sectionText, source, language) {
+    const escapedLanguage = language.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(
+      "`{3,}\\s*" + escapedLanguage + "(?:\\s+\\|(\\d{2,4}))?\\s*\\n([\\s\\S]*?)`{3,}",
+      "gi"
+    );
     let match = regex.exec(sectionText);
     while (match) {
       const widthRaw = match[1];
@@ -5636,7 +5652,7 @@ ${error instanceof Error ? error.message : String(error)}`
         this.statusEl.setText("Export cancelled.");
         return;
       }
-      const response = await this.plugin.requestDiagram(source, format);
+      const response = await this.plugin.requestDiagram(source, format, "plantuml");
       if (response.status !== 200) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -5742,7 +5758,7 @@ ${error instanceof Error ? error.message : String(error)}`
       const renderRoot = this.contentHostEl.createDiv({ cls: "puml-viewer-render-root" });
       const loadingEl = renderRoot.createDiv({ cls: "puml-loading", text: "Generating diagram..." });
       if (this.plugin.settings.imageFormat === "svg") {
-        const response = await this.plugin.requestDiagram(source, "svg");
+        const response = await this.plugin.requestDiagram(source, "svg", "plantuml");
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -5766,7 +5782,7 @@ ${error instanceof Error ? error.message : String(error)}`
         const img = renderRoot.createEl("img", {
           cls: "puml-viewer-image puml-is-hidden"
         });
-        const objectUrl = await this.plugin.fetchPngObjectUrl(source);
+        const objectUrl = await this.plugin.fetchPngObjectUrl(source, "plantuml");
         img.src = objectUrl;
         img.alt = this.currentFile.name;
         img.addEventListener(
@@ -6017,6 +6033,13 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
+    new import_obsidian.Setting(containerEl).setName("Kroki diagram type").setDesc("Default diagram type for kroki requests outside explicit code block language.").addDropdown(
+      (dropdown) => dropdown.addOption("plantuml", "Plantuml").addOption("mermaid", "Mermaid").setValue(this.plugin.settings.krokiDiagramType).onChange(async (value) => {
+        if (value !== "plantuml" && value !== "mermaid") return;
+        this.plugin.settings.krokiDiagramType = value;
+        await this.plugin.saveSettings();
+      })
+    );
     new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Use a local server URL.").addText(
       (text) => text.setPlaceholder("Local server URL").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
         this.plugin.settings.localServerUrl = value.trim();
@@ -6036,14 +6059,14 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in embedded plantuml blocks.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in embedded diagram blocks.").addDropdown(
       (dropdown) => dropdown.addOption("diagram", "Diagram").addOption("code", "Code").setValue(this.plugin.settings.embeddedDefaultView).onChange(async (value) => {
         if (value !== "diagram" && value !== "code") return;
         this.plugin.settings.embeddedDefaultView = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagrams in embedded plantuml blocks.").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagrams in embedded diagram blocks.").addDropdown(
       (dropdown) => dropdown.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(this.plugin.settings.embeddedDiagramAlign).onChange(async (value) => {
         if (value !== "left" && value !== "center" && value !== "right") return;
         this.plugin.settings.embeddedDiagramAlign = value;

@@ -23,12 +23,14 @@ const CSS_NONE = 'none';
 
 type ViewMode = 'view' | 'edit';
 type DiagramFormat = 'svg' | 'png' | 'txt';
+type DiagramType = 'plantuml' | 'mermaid';
 type ExportConflictAction = 'overwrite' | 'new-file' | 'cancel';
 
 interface PUMLViewerSettings {
   serverType: 'plantuml' | 'kroki' | 'local';
   plantumlServerUrl: string;
   krokiServerUrl: string;
+  krokiDiagramType: DiagramType;
   localServerUrl: string;
   imageFormat: 'svg' | 'png';
   autoRefresh: boolean;
@@ -41,6 +43,7 @@ const DEFAULT_SETTINGS: PUMLViewerSettings = {
   serverType: 'plantuml',
   plantumlServerUrl: 'https://www.plantuml.com/plantuml',
   krokiServerUrl: 'https://kroki.io',
+  krokiDiagramType: 'plantuml',
   localServerUrl: 'http://localhost:8000',
   imageFormat: 'svg',
   autoRefresh: true,
@@ -153,13 +156,14 @@ export default class PUMLViewerPlugin extends Plugin {
       void this.activatePUMLView(activeFile);
     });
 
-    for (const lang of ['plantuml']) {
+    for (const lang of ['plantuml', 'mermaid'] as const) {
       this.registerMarkdownCodeBlockProcessor(lang, async (source, el, ctx) => {
         const fenceWidthHintPx = this.extractFenceWidthHint(
           ctx.getSectionInfo(el)?.text ?? '',
           source,
+          lang,
         );
-        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx);
+        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, lang);
       });
     }
 
@@ -216,13 +220,14 @@ export default class PUMLViewerPlugin extends Plugin {
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 
-  buildRenderUrl(source: string): string {
+  buildRenderUrl(source: string, diagramType?: DiagramType): string {
     const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, '');
     const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
 
     if (this.settings.serverType === 'kroki') {
-      return `${normalizedBase}/plantuml/${format}/${encoded}`;
+      const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
+      return `${normalizedBase}/${resolvedDiagramType}/${format}/${encoded}`;
     }
 
     return `${normalizedBase}/${format}/${encoded}`;
@@ -251,14 +256,18 @@ export default class PUMLViewerPlugin extends Plugin {
     return headers['content-type'] ?? headers['Content-Type'] ?? '';
   }
 
-  async requestDiagram(source: string, format: DiagramFormat) {
+  async requestDiagram(source: string, format: DiagramFormat, diagramType?: DiagramType) {
     const normalizedBase = this.normalizedServerBase();
+    if (diagramType === 'mermaid' && this.settings.serverType !== 'kroki') {
+      throw new Error('Mermaid rendering requires server type "Kroki".');
+    }
 
     if (this.settings.serverType === 'kroki') {
+      const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       const accept =
         format === 'svg' ? 'image/svg+xml' : format === 'png' ? 'image/png' : 'text/plain';
       return requestUrl({
-        url: `${normalizedBase}/plantuml/${format}`,
+        url: `${normalizedBase}/${resolvedDiagramType}/${format}`,
         method: 'POST',
         body: source,
         headers: {
@@ -277,8 +286,8 @@ export default class PUMLViewerPlugin extends Plugin {
     });
   }
 
-  async fetchPngObjectUrl(source: string): Promise<string> {
-    const response = await this.requestDiagram(source, 'png');
+  async fetchPngObjectUrl(source: string, diagramType?: DiagramType): Promise<string> {
+    const response = await this.requestDiagram(source, 'png', diagramType);
     if (response.status !== 200) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -296,8 +305,13 @@ export default class PUMLViewerPlugin extends Plugin {
     return URL.createObjectURL(blob);
   }
 
-  async downloadDiagramAs(source: string, format: 'svg' | 'png', baseName = 'diagram'): Promise<void> {
-    const response = await this.requestDiagram(source, format);
+  async downloadDiagramAs(
+    source: string,
+    format: 'svg' | 'png',
+    baseName = 'diagram',
+    diagramType?: DiagramType,
+  ): Promise<void> {
+    const response = await this.requestDiagram(source, format, diagramType);
     if (response.status !== 200) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -336,15 +350,21 @@ export default class PUMLViewerPlugin extends Plugin {
     URL.revokeObjectURL(objectUrl);
   }
 
-  async downloadDiagram(source: string, baseName = 'diagram'): Promise<void> {
-    await this.downloadDiagramAs(source, this.settings.imageFormat, baseName);
+  async downloadDiagram(
+    source: string,
+    baseName = 'diagram',
+    diagramType?: DiagramType,
+  ): Promise<void> {
+    await this.downloadDiagramAs(source, this.settings.imageFormat, baseName, diagramType);
   }
 
   private async renderEmbeddedDiagramBlock(
     source: string,
     el: HTMLElement,
     fenceWidthHintPx: number | null,
+    diagramType: DiagramType,
   ): Promise<void> {
+    const diagramLabel = diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML';
     const { renderSource, widthHintPx } = this.extractEmbeddedWidthHint(source, fenceWidthHintPx);
 
     const container = el.createDiv({ cls: 'puml-embed-block' });
@@ -368,7 +388,11 @@ export default class PUMLViewerPlugin extends Plugin {
     const lines = source.split('\n');
     lines.forEach((line, index) => {
       const lineEl = codeEl.createSpan({ cls: 'puml-embed-code-line' });
-      this.renderPlantUmlHighlightedLine(lineEl, line);
+      if (diagramType === 'plantuml') {
+        this.renderPlantUmlHighlightedLine(lineEl, line);
+      } else {
+        lineEl.setText(line);
+      }
       if (index < lines.length - 1) {
         lineEl.appendText('\n');
       }
@@ -403,7 +427,7 @@ export default class PUMLViewerPlugin extends Plugin {
     applyToggleState();
 
     if (!renderSource.trim()) {
-      diagramPane.createDiv({ cls: 'puml-embed-error', text: 'PlantUML block is empty.' });
+      diagramPane.createDiv({ cls: 'puml-embed-error', text: `${diagramLabel} block is empty.` });
       return;
     }
 
@@ -539,7 +563,7 @@ export default class PUMLViewerPlugin extends Plugin {
 
       try {
         if (this.settings.imageFormat === 'svg') {
-          const response = await this.requestDiagram(renderSource, 'svg');
+          const response = await this.requestDiagram(renderSource, 'svg', diagramType);
 
           if (response.status !== 200) {
             throw new Error(`HTTP ${response.status}`);
@@ -584,8 +608,8 @@ export default class PUMLViewerPlugin extends Plugin {
           canvasEl.appendChild(svgHost);
         } else {
           const img = canvasEl.createEl('img', { cls: 'puml-zoom-image puml-is-hidden' });
-          img.alt = 'PlantUML diagram';
-          const objectUrl = await this.fetchPngObjectUrl(renderSource);
+          img.alt = `${diagramLabel} diagram`;
+          const objectUrl = await this.fetchPngObjectUrl(renderSource, diagramType);
           img.src = objectUrl;
 
           img.addEventListener(
@@ -628,7 +652,7 @@ export default class PUMLViewerPlugin extends Plugin {
       menu.addItem((item) =>
         item.setTitle('Save as PNG').onClick(async () => {
           try {
-            await this.downloadDiagramAs(renderSource, 'png', 'plantuml-diagram');
+            await this.downloadDiagramAs(renderSource, 'png', `${diagramType}-diagram`, diagramType);
             new Notice('Diagram saved as PNG');
           } catch (error) {
             new Notice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -638,7 +662,7 @@ export default class PUMLViewerPlugin extends Plugin {
       menu.addItem((item) =>
         item.setTitle('Save as SVG').onClick(async () => {
           try {
-            await this.downloadDiagramAs(renderSource, 'svg', 'plantuml-diagram');
+            await this.downloadDiagramAs(renderSource, 'svg', `${diagramType}-diagram`, diagramType);
             new Notice('Diagram saved as SVG');
           } catch (error) {
             new Notice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -651,7 +675,7 @@ export default class PUMLViewerPlugin extends Plugin {
       void (async () => {
         try {
           await navigator.clipboard.writeText(renderSource);
-          new Notice('Plantuml code copied.');
+          new Notice(`${diagramLabel} code copied.`);
         } catch (error) {
           new Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -661,7 +685,7 @@ export default class PUMLViewerPlugin extends Plugin {
     const loadingEl = diagramPane.createDiv({ cls: 'puml-loading', text: 'Generating diagram...' });
     try {
       if (this.settings.imageFormat === 'svg') {
-        const response = await this.requestDiagram(renderSource, 'svg');
+        const response = await this.requestDiagram(renderSource, 'svg', diagramType);
 
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
@@ -687,9 +711,9 @@ export default class PUMLViewerPlugin extends Plugin {
         }
       } else {
         const img = diagramPane.createEl('img', { cls: 'puml-embed-image puml-is-hidden' });
-        const objectUrl = await this.fetchPngObjectUrl(renderSource);
+        const objectUrl = await this.fetchPngObjectUrl(renderSource, diagramType);
         img.src = objectUrl;
-        img.alt = 'PlantUML diagram';
+        img.alt = `${diagramLabel} diagram`;
         img.addEventListener(
           'load',
           () => {
@@ -744,8 +768,12 @@ export default class PUMLViewerPlugin extends Plugin {
     return { renderSource: lines.join('\n'), widthHintPx };
   }
 
-  private extractFenceWidthHint(sectionText: string, source: string): number | null {
-    const regex = /`{3,}\s*plantuml(?:\s+\|(\d{2,4}))?\s*\n([\s\S]*?)`{3,}/gi;
+  private extractFenceWidthHint(sectionText: string, source: string, language: DiagramType): number | null {
+    const escapedLanguage = language.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(
+      '`{3,}\\s*' + escapedLanguage + '(?:\\s+\\|(\\d{2,4}))?\\s*\\n([\\s\\S]*?)`{3,}',
+      'gi',
+    );
     let match: RegExpExecArray | null = regex.exec(sectionText);
     while (match) {
       const widthRaw = match[1];
@@ -1173,7 +1201,7 @@ class PUMLViewerView extends ItemView {
         return;
       }
 
-      const response = await this.plugin.requestDiagram(source, format);
+      const response = await this.plugin.requestDiagram(source, format, 'plantuml');
 
       if (response.status !== 200) {
         throw new Error(`HTTP ${response.status}`);
@@ -1296,7 +1324,7 @@ class PUMLViewerView extends ItemView {
       const loadingEl = renderRoot.createDiv({ cls: 'puml-loading', text: 'Generating diagram...' });
 
       if (this.plugin.settings.imageFormat === 'svg') {
-        const response = await this.plugin.requestDiagram(source, 'svg');
+        const response = await this.plugin.requestDiagram(source, 'svg', 'plantuml');
 
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
@@ -1322,7 +1350,7 @@ class PUMLViewerView extends ItemView {
         const img = renderRoot.createEl('img', {
           cls: 'puml-viewer-image puml-is-hidden',
         });
-        const objectUrl = await this.plugin.fetchPngObjectUrl(source);
+        const objectUrl = await this.plugin.fetchPngObjectUrl(source, 'plantuml');
         img.src = objectUrl;
         img.alt = this.currentFile.name;
         img.addEventListener(
@@ -1643,6 +1671,21 @@ class PUMLViewerSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Kroki diagram type')
+      .setDesc('Default diagram type for kroki requests outside explicit code block language.')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('plantuml', 'Plantuml')
+          .addOption('mermaid', 'Mermaid')
+          .setValue(this.plugin.settings.krokiDiagramType)
+          .onChange(async (value) => {
+            if (value !== 'plantuml' && value !== 'mermaid') return;
+            this.plugin.settings.krokiDiagramType = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName('Local URL')
       .setDesc('Use a local server URL.')
       .addText((text) =>
@@ -1682,7 +1725,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded block default view')
-      .setDesc('Choose what to show first in embedded plantuml blocks.')
+      .setDesc('Choose what to show first in embedded diagram blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('diagram', 'Diagram')
@@ -1697,7 +1740,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedded diagram alignment')
-      .setDesc('Default alignment for diagrams in embedded plantuml blocks.')
+      .setDesc('Default alignment for diagrams in embedded diagram blocks.')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('left', 'Left')

@@ -20,6 +20,12 @@ const VIEW_TYPE_PUML = 'puml-viewer';
 const encodePlantuml = encode;
 const CSS_AUTO = 'auto';
 const CSS_NONE = 'none';
+const SUPPORTED_PLANTUML_EXTENSIONS = ['puml'] as const;
+const SUPPORTED_MERMAID_EXTENSIONS = ['mermaid', 'mmd', 'marmaid'] as const;
+const SUPPORTED_DIAGRAM_EXTENSIONS = [
+  ...SUPPORTED_PLANTUML_EXTENSIONS,
+  ...SUPPORTED_MERMAID_EXTENSIONS,
+] as const;
 
 type ViewMode = 'view' | 'edit';
 type DiagramFormat = 'svg' | 'png' | 'txt';
@@ -55,6 +61,13 @@ const DEFAULT_SETTINGS: PUMLViewerSettings = {
 interface PUMLViewState extends Record<string, unknown> {
   file?: string;
   mode?: ViewMode;
+}
+
+function getDiagramTypeByExtension(extension: string): DiagramType | null {
+  const normalized = extension.toLowerCase();
+  if ((SUPPORTED_PLANTUML_EXTENSIONS as readonly string[]).includes(normalized)) return 'plantuml';
+  if ((SUPPORTED_MERMAID_EXTENSIONS as readonly string[]).includes(normalized)) return 'mermaid';
+  return null;
 }
 
 function parseSvgLength(value: string | null): number {
@@ -129,14 +142,14 @@ export default class PUMLViewerPlugin extends Plugin {
     await this.loadSettings();
 
     this.registerView(VIEW_TYPE_PUML, (leaf) => new PUMLViewerView(leaf, this));
-    this.registerExtensions(['puml'], VIEW_TYPE_PUML);
+    this.registerExtensions([...SUPPORTED_DIAGRAM_EXTENSIONS], VIEW_TYPE_PUML);
 
     this.addCommand({
       id: 'open-current-puml-in-viewer',
-      name: 'Open current plantuml file in viewer',
+      name: 'Open current diagram file in viewer',
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canOpen = !!file && file.extension === 'puml';
+        const canOpen = !!file && getDiagramTypeByExtension(file.extension) !== null;
 
         if (canOpen && !checking && file) {
           void this.activatePUMLView(file);
@@ -148,7 +161,7 @@ export default class PUMLViewerPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       const activeFile = this.app.workspace.getActiveFile();
-      if (activeFile?.extension !== 'puml') return;
+      if (!activeFile || getDiagramTypeByExtension(activeFile.extension) === null) return;
 
       const activeLeaf = this.app.workspace.getMostRecentLeaf();
       if (activeLeaf?.view.getViewType() === VIEW_TYPE_PUML) return;
@@ -221,11 +234,14 @@ export default class PUMLViewerPlugin extends Plugin {
   }
 
   buildRenderUrl(source: string, diagramType?: DiagramType): string {
-    const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, '');
+    const useKroki = this.settings.serverType === 'kroki' || diagramType === 'mermaid';
+    const normalizedBase = useKroki
+      ? this.settings.krokiServerUrl.replace(/\/+$/, '').replace(/\/plantuml$/i, '')
+      : this.getActiveServerUrl().replace(/\/+$/, '');
     const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
 
-    if (this.settings.serverType === 'kroki') {
+    if (useKroki) {
       const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       return `${normalizedBase}/${resolvedDiagramType}/${format}/${encoded}`;
     }
@@ -257,12 +273,11 @@ export default class PUMLViewerPlugin extends Plugin {
   }
 
   async requestDiagram(source: string, format: DiagramFormat, diagramType?: DiagramType) {
-    const normalizedBase = this.normalizedServerBase();
-    if (diagramType === 'mermaid' && this.settings.serverType !== 'kroki') {
-      throw new Error('Mermaid rendering requires server type "Kroki".');
-    }
-
-    if (this.settings.serverType === 'kroki') {
+    const useKroki = this.settings.serverType === 'kroki' || diagramType === 'mermaid';
+    if (useKroki) {
+      const normalizedBase = this.settings.krokiServerUrl
+        .replace(/\/+$/, '')
+        .replace(/\/plantuml$/i, '');
       const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       const accept =
         format === 'svg' ? 'image/svg+xml' : format === 'png' ? 'image/png' : 'text/plain';
@@ -278,6 +293,7 @@ export default class PUMLViewerPlugin extends Plugin {
       });
     }
 
+    const normalizedBase = this.normalizedServerBase();
     const encoded = encodePlantuml(source);
     return requestUrl({
       url: `${normalizedBase}/${format}/${encoded}`,
@@ -864,11 +880,16 @@ class PUMLViewerView extends ItemView {
   }
 
   getDisplayText(): string {
-    return this.currentFile ? `PUML: ${this.currentFile.name}` : 'PUML Viewer';
+    return this.currentFile ? `Diagram: ${this.currentFile.name}` : 'Diagram Viewer';
   }
 
   getIcon(): string {
     return 'git-branch-plus';
+  }
+
+  private getCurrentDiagramType(): DiagramType | null {
+    if (!this.currentFile) return null;
+    return getDiagramTypeByExtension(this.currentFile.extension);
   }
 
   async onOpen(): Promise<void> {
@@ -1005,7 +1026,7 @@ class PUMLViewerView extends ItemView {
     if (typeof state?.file === 'string') candidates.push(state.file);
 
     const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile?.extension === 'puml') candidates.push(activeFile.path);
+    if (activeFile && getDiagramTypeByExtension(activeFile.extension)) candidates.push(activeFile.path);
 
     if (this.plugin.settings.lastOpenedPumlPath) {
       candidates.push(this.plugin.settings.lastOpenedPumlPath);
@@ -1014,7 +1035,7 @@ class PUMLViewerView extends ItemView {
     const workspaceAny = this.app.workspace as unknown as { getLastOpenFiles?: () => string[] };
     const lastOpenFiles = workspaceAny.getLastOpenFiles?.() ?? [];
     for (const path of lastOpenFiles) {
-      if (path.endsWith('.puml')) candidates.push(path);
+      if (/\.(puml|mermaid|mmd|marmaid)$/i.test(path)) candidates.push(path);
     }
 
     const tried = new Set<string>();
@@ -1022,7 +1043,7 @@ class PUMLViewerView extends ItemView {
       if (!path || tried.has(path)) continue;
       tried.add(path);
       const file = this.app.vault.getAbstractFileByPath(path);
-      if (file instanceof TFile && file.extension === 'puml') {
+      if (file instanceof TFile && getDiagramTypeByExtension(file.extension)) {
         this.currentFile = file;
         void this.plugin.rememberLastPuml(file.path);
         this.resetDraftIfFileChanged();
@@ -1074,10 +1095,11 @@ class PUMLViewerView extends ItemView {
     this.zoomOutBtn.disabled = zoomDisabled;
     this.zoomResetBtn.disabled = zoomDisabled;
     this.zoomInBtn.disabled = zoomDisabled;
-    const exportDisabled = zoomDisabled || !this.currentFile;
+    const diagramType = this.getCurrentDiagramType();
+    const exportDisabled = zoomDisabled || !this.currentFile || !diagramType;
     this.exportPngBtn.disabled = exportDisabled;
     this.exportSvgBtn.disabled = exportDisabled;
-    this.exportAsciiBtn.disabled = exportDisabled;
+    this.exportAsciiBtn.disabled = exportDisabled || diagramType === 'mermaid';
     this.updateZoomLabel();
   }
 
@@ -1100,7 +1122,7 @@ class PUMLViewerView extends ItemView {
     this.isMainPanning = false;
 
     if (!this.currentFile) {
-      this.statusEl.setText('No .puml file selected.');
+      this.statusEl.setText('No diagram file selected.');
       return;
     }
 
@@ -1174,26 +1196,32 @@ class PUMLViewerView extends ItemView {
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new Notice('Plantuml source saved.');
+      new Notice('Diagram source saved.');
     } catch (error) {
       console.error(error);
       this.statusEl.setText('Save failed.');
-      new Notice('Failed to save plantuml source.');
+      new Notice('Failed to save diagram source.');
     }
   }
 
   private async exportDiagram(format: DiagramFormat): Promise<void> {
     if (this.mode !== 'view' || !this.currentFile) return;
+    const diagramType = this.getCurrentDiagramType();
+    if (!diagramType) return;
+    if (diagramType === 'mermaid' && format === 'txt') {
+      new Notice('ASCII export is only available for plantuml.');
+      return;
+    }
 
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new Notice('Plantuml file is empty.');
+        new Notice('Diagram file is empty.');
         return;
       }
 
       const defaultOutputPath = normalizePath(
-        this.currentFile.path.replace(/\.puml$/i, `.${format}`),
+        this.currentFile.path.replace(/\.[^/.]+$/i, `.${format}`),
       );
       const outputPath = await this.resolveExportOutputPath(defaultOutputPath);
       if (!outputPath) {
@@ -1201,7 +1229,7 @@ class PUMLViewerView extends ItemView {
         return;
       }
 
-      const response = await this.plugin.requestDiagram(source, format, 'plantuml');
+      const response = await this.plugin.requestDiagram(source, format, diagramType);
 
       if (response.status !== 200) {
         throw new Error(`HTTP ${response.status}`);
@@ -1307,9 +1335,15 @@ class PUMLViewerView extends ItemView {
     this.editorEl = null;
 
     if (!this.currentFile) {
-      this.statusEl.setText('No .puml file selected.');
+      this.statusEl.setText('No diagram file selected.');
       return;
     }
+    const diagramType = this.getCurrentDiagramType();
+    if (!diagramType) {
+      this.statusEl.setText('Unsupported file type.');
+      return;
+    }
+    const diagramLabel = diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML';
 
     try {
       const source = await this.app.vault.read(this.currentFile);
@@ -1324,7 +1358,7 @@ class PUMLViewerView extends ItemView {
       const loadingEl = renderRoot.createDiv({ cls: 'puml-loading', text: 'Generating diagram...' });
 
       if (this.plugin.settings.imageFormat === 'svg') {
-        const response = await this.plugin.requestDiagram(source, 'svg', 'plantuml');
+        const response = await this.plugin.requestDiagram(source, 'svg', diagramType);
 
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
@@ -1350,9 +1384,9 @@ class PUMLViewerView extends ItemView {
         const img = renderRoot.createEl('img', {
           cls: 'puml-viewer-image puml-is-hidden',
         });
-        const objectUrl = await this.plugin.fetchPngObjectUrl(source, 'plantuml');
+        const objectUrl = await this.plugin.fetchPngObjectUrl(source, diagramType);
         img.src = objectUrl;
-        img.alt = this.currentFile.name;
+        img.alt = `${diagramLabel} diagram`;
         img.addEventListener(
           'load',
           () => {
@@ -1390,7 +1424,7 @@ class PUMLViewerView extends ItemView {
         `Failed to render diagram.\n\n${error instanceof Error ? error.message : String(error)}`,
       );
 
-      new Notice('Plantuml render failed.');
+      new Notice(`${diagramLabel} render failed.`);
     }
   }
 
@@ -1715,7 +1749,7 @@ class PUMLViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Auto refresh')
-      .setDesc('Automatically re-render diagram when the .puml file changes.')
+      .setDesc('Automatically re-render diagram when the source file changes.')
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.autoRefresh).onChange(async (value) => {
           this.plugin.settings.autoRefresh = value;

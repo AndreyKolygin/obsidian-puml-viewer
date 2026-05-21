@@ -1,23 +1,23 @@
 # PUML Viewer for Obsidian
 
-A plugin for Obsidian that renders PlantUML from `.puml` files and renders PlantUML/Mermaid from markdown code blocks.
+A plugin for Obsidian that renders PlantUML/Mermaid from diagram files and from markdown code blocks.
 
 ## Features
 
-- Custom `.puml` view with two modes:
+- Custom diagram file view (`.puml`, `.mermaid`, `.mmd`, `.marmaid`) with two modes:
   - `View` (diagram)
   - `Edit` (source code with line numbers)
-- `.puml` toolbar actions:
+- Diagram toolbar actions:
   - refresh
   - zoom in / reset / zoom out
   - export buttons (SVG icons) to save as:
     - `.png`
     - `.svg`
     - `.txt` (ASCII Art)
-- Drag-to-pan in `.puml` diagram view when content is scrollable
+- Drag-to-pan in diagram view when content is scrollable
 - Auto-fit diagram to viewer width on render
 - Auto-refresh on source file change
-- Startup recovery: reopen and render previously opened `.puml` after Obsidian restart
+- Startup recovery: reopen and render previously opened diagram file after Obsidian restart
 - Markdown embedded rendering for fenced blocks:
   - ` ```plantuml `
   - ` ```mermaid `
@@ -58,13 +58,13 @@ Then enable the plugin in **Settings → Community plugins**.
 
 ## Usage
 
-### Open `.puml` files
+### Open diagram files
 
-- Open a `.puml` file and run command:
-  - `Open current PUML in viewer`
+- Open a supported diagram file (`.puml`, `.mermaid`, `.mmd`, `.marmaid`) and run command:
+  - `Open current diagram file in viewer`
 - Switch between `View` and `Edit` modes in the toolbar.
 
-The dedicated viewer gives you a diagram-first workspace for standalone `.puml` files, with quick switching back to the editable source when you need to adjust the markup.
+The dedicated viewer gives you a diagram-first workspace for standalone files, with quick switching back to the editable source when you need to adjust the markup.
 
 <img src="assets/screenshots/puml_01.png" width="900" alt="PUML file opened in Obsidian viewer" />
 

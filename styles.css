@@ -298,7 +298,14 @@
 }
 
 .puml-is-hidden {
-  display: none !important;
+  display: none;
+}
+
+.puml-embed-diagram img.puml-is-hidden,
+.puml-embed-image.puml-is-hidden,
+.puml-zoom-image.puml-is-hidden,
+.puml-viewer-image.puml-is-hidden {
+  display: none;
 }
 
 .puml-embed-code {

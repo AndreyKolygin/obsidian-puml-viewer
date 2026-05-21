@@ -1,9 +1,9 @@
 {
   "id": "puml-viewer",
   "name": "PUML Viewer",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "minAppVersion": "1.5.0",
-  "description": "Renders PlantUML from .puml files and PlantUML/Mermaid from markdown code blocks.",
+  "description": "Renders PlantUML/Mermaid from diagram files and markdown code blocks.",
   "author": "Andrei Kolygin",
   "isDesktopOnly": false
 }

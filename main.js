@@ -4699,6 +4699,12 @@ var VIEW_TYPE_PUML = "puml-viewer";
 var encodePlantuml = import_plantuml_encoder.encode;
 var CSS_AUTO = "auto";
 var CSS_NONE = "none";
+var SUPPORTED_PLANTUML_EXTENSIONS = ["puml"];
+var SUPPORTED_MERMAID_EXTENSIONS = ["mermaid", "mmd", "marmaid"];
+var SUPPORTED_DIAGRAM_EXTENSIONS = [
+  ...SUPPORTED_PLANTUML_EXTENSIONS,
+  ...SUPPORTED_MERMAID_EXTENSIONS
+];
 var DEFAULT_SETTINGS = {
   serverType: "plantuml",
   plantumlServerUrl: "https://www.plantuml.com/plantuml",
@@ -4711,6 +4717,12 @@ var DEFAULT_SETTINGS = {
   embeddedDefaultView: "diagram",
   embeddedDiagramAlign: "center"
 };
+function getDiagramTypeByExtension(extension) {
+  const normalized = extension.toLowerCase();
+  if (SUPPORTED_PLANTUML_EXTENSIONS.includes(normalized)) return "plantuml";
+  if (SUPPORTED_MERMAID_EXTENSIONS.includes(normalized)) return "mermaid";
+  return null;
+}
 function parseSvgLength(value) {
   if (!value) return 0;
   const parsed = Number.parseFloat(value);
@@ -4763,13 +4775,13 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   async onload() {
     await this.loadSettings();
     this.registerView(VIEW_TYPE_PUML, (leaf) => new PUMLViewerView(leaf, this));
-    this.registerExtensions(["puml"], VIEW_TYPE_PUML);
+    this.registerExtensions([...SUPPORTED_DIAGRAM_EXTENSIONS], VIEW_TYPE_PUML);
     this.addCommand({
       id: "open-current-puml-in-viewer",
-      name: "Open current plantuml file in viewer",
+      name: "Open current diagram file in viewer",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
-        const canOpen = !!file && file.extension === "puml";
+        const canOpen = !!file && getDiagramTypeByExtension(file.extension) !== null;
         if (canOpen && !checking && file) {
           void this.activatePUMLView(file);
         }
@@ -4778,7 +4790,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     });
     this.app.workspace.onLayoutReady(() => {
       const activeFile = this.app.workspace.getActiveFile();
-      if (activeFile?.extension !== "puml") return;
+      if (!activeFile || getDiagramTypeByExtension(activeFile.extension) === null) return;
       const activeLeaf = this.app.workspace.getMostRecentLeaf();
       if (activeLeaf?.view.getViewType() === VIEW_TYPE_PUML) return;
       void this.activatePUMLView(activeFile);
@@ -4838,10 +4850,11 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
   buildRenderUrl(source, diagramType) {
-    const normalizedBase = this.getActiveServerUrl().replace(/\/+$/, "");
+    const useKroki = this.settings.serverType === "kroki" || diagramType === "mermaid";
+    const normalizedBase = useKroki ? this.settings.krokiServerUrl.replace(/\/+$/, "").replace(/\/plantuml$/i, "") : this.getActiveServerUrl().replace(/\/+$/, "");
     const encoded = encodePlantuml(source);
     const format = this.settings.imageFormat;
-    if (this.settings.serverType === "kroki") {
+    if (useKroki) {
       const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       return `${normalizedBase}/${resolvedDiagramType}/${format}/${encoded}`;
     }
@@ -4868,15 +4881,13 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     return headers["content-type"] ?? headers["Content-Type"] ?? "";
   }
   async requestDiagram(source, format, diagramType) {
-    const normalizedBase = this.normalizedServerBase();
-    if (diagramType === "mermaid" && this.settings.serverType !== "kroki") {
-      throw new Error('Mermaid rendering requires server type "Kroki".');
-    }
-    if (this.settings.serverType === "kroki") {
+    const useKroki = this.settings.serverType === "kroki" || diagramType === "mermaid";
+    if (useKroki) {
+      const normalizedBase2 = this.settings.krokiServerUrl.replace(/\/+$/, "").replace(/\/plantuml$/i, "");
       const resolvedDiagramType = diagramType ?? this.settings.krokiDiagramType;
       const accept = format === "svg" ? "image/svg+xml" : format === "png" ? "image/png" : "text/plain";
       return (0, import_obsidian.requestUrl)({
-        url: `${normalizedBase}/${resolvedDiagramType}/${format}`,
+        url: `${normalizedBase2}/${resolvedDiagramType}/${format}`,
         method: "POST",
         body: source,
         headers: {
@@ -4886,6 +4897,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
         throw: false
       });
     }
+    const normalizedBase = this.normalizedServerBase();
     const encoded = encodePlantuml(source);
     return (0, import_obsidian.requestUrl)({
       url: `${normalizedBase}/${format}/${encoded}`,
@@ -5380,10 +5392,14 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     return VIEW_TYPE_PUML;
   }
   getDisplayText() {
-    return this.currentFile ? `PUML: ${this.currentFile.name}` : "PUML Viewer";
+    return this.currentFile ? `Diagram: ${this.currentFile.name}` : "Diagram Viewer";
   }
   getIcon() {
     return "git-branch-plus";
+  }
+  getCurrentDiagramType() {
+    if (!this.currentFile) return null;
+    return getDiagramTypeByExtension(this.currentFile.extension);
   }
   async onOpen() {
     const viewContainer = this.containerEl.children[1];
@@ -5493,21 +5509,21 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     const candidates = [];
     if (typeof state?.file === "string") candidates.push(state.file);
     const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile?.extension === "puml") candidates.push(activeFile.path);
+    if (activeFile && getDiagramTypeByExtension(activeFile.extension)) candidates.push(activeFile.path);
     if (this.plugin.settings.lastOpenedPumlPath) {
       candidates.push(this.plugin.settings.lastOpenedPumlPath);
     }
     const workspaceAny = this.app.workspace;
     const lastOpenFiles = workspaceAny.getLastOpenFiles?.() ?? [];
     for (const path of lastOpenFiles) {
-      if (path.endsWith(".puml")) candidates.push(path);
+      if (/\.(puml|mermaid|mmd|marmaid)$/i.test(path)) candidates.push(path);
     }
     const tried = /* @__PURE__ */ new Set();
     for (const path of candidates) {
       if (!path || tried.has(path)) continue;
       tried.add(path);
       const file = this.app.vault.getAbstractFileByPath(path);
-      if (file instanceof import_obsidian.TFile && file.extension === "puml") {
+      if (file instanceof import_obsidian.TFile && getDiagramTypeByExtension(file.extension)) {
         this.currentFile = file;
         void this.plugin.rememberLastPuml(file.path);
         this.resetDraftIfFileChanged();
@@ -5542,10 +5558,11 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.zoomOutBtn.disabled = zoomDisabled;
     this.zoomResetBtn.disabled = zoomDisabled;
     this.zoomInBtn.disabled = zoomDisabled;
-    const exportDisabled = zoomDisabled || !this.currentFile;
+    const diagramType = this.getCurrentDiagramType();
+    const exportDisabled = zoomDisabled || !this.currentFile || !diagramType;
     this.exportPngBtn.disabled = exportDisabled;
     this.exportSvgBtn.disabled = exportDisabled;
-    this.exportAsciiBtn.disabled = exportDisabled;
+    this.exportAsciiBtn.disabled = exportDisabled || diagramType === "mermaid";
     this.updateZoomLabel();
   }
   resetDraftIfFileChanged() {
@@ -5565,7 +5582,7 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.imageWrapEl.removeClass("is-panning");
     this.isMainPanning = false;
     if (!this.currentFile) {
-      this.statusEl.setText("No .puml file selected.");
+      this.statusEl.setText("No diagram file selected.");
       return;
     }
     try {
@@ -5629,30 +5646,36 @@ ${error instanceof Error ? error.message : String(error)}`
       this.draftFilePath = this.currentFile.path;
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
-      new import_obsidian.Notice("Plantuml source saved.");
+      new import_obsidian.Notice("Diagram source saved.");
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Save failed.");
-      new import_obsidian.Notice("Failed to save plantuml source.");
+      new import_obsidian.Notice("Failed to save diagram source.");
     }
   }
   async exportDiagram(format) {
     if (this.mode !== "view" || !this.currentFile) return;
+    const diagramType = this.getCurrentDiagramType();
+    if (!diagramType) return;
+    if (diagramType === "mermaid" && format === "txt") {
+      new import_obsidian.Notice("ASCII export is only available for plantuml.");
+      return;
+    }
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
-        new import_obsidian.Notice("Plantuml file is empty.");
+        new import_obsidian.Notice("Diagram file is empty.");
         return;
       }
       const defaultOutputPath = (0, import_obsidian.normalizePath)(
-        this.currentFile.path.replace(/\.puml$/i, `.${format}`)
+        this.currentFile.path.replace(/\.[^/.]+$/i, `.${format}`)
       );
       const outputPath = await this.resolveExportOutputPath(defaultOutputPath);
       if (!outputPath) {
         this.statusEl.setText("Export cancelled.");
         return;
       }
-      const response = await this.plugin.requestDiagram(source, format, "plantuml");
+      const response = await this.plugin.requestDiagram(source, format, diagramType);
       if (response.status !== 200) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -5745,9 +5768,15 @@ ${error instanceof Error ? error.message : String(error)}`
     this.editorGutterEl = null;
     this.editorEl = null;
     if (!this.currentFile) {
-      this.statusEl.setText("No .puml file selected.");
+      this.statusEl.setText("No diagram file selected.");
       return;
     }
+    const diagramType = this.getCurrentDiagramType();
+    if (!diagramType) {
+      this.statusEl.setText("Unsupported file type.");
+      return;
+    }
+    const diagramLabel = diagramType === "mermaid" ? "Mermaid" : "PlantUML";
     try {
       const source = await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
@@ -5758,7 +5787,7 @@ ${error instanceof Error ? error.message : String(error)}`
       const renderRoot = this.contentHostEl.createDiv({ cls: "puml-viewer-render-root" });
       const loadingEl = renderRoot.createDiv({ cls: "puml-loading", text: "Generating diagram..." });
       if (this.plugin.settings.imageFormat === "svg") {
-        const response = await this.plugin.requestDiagram(source, "svg", "plantuml");
+        const response = await this.plugin.requestDiagram(source, "svg", diagramType);
         if (response.status !== 200) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -5782,9 +5811,9 @@ ${error instanceof Error ? error.message : String(error)}`
         const img = renderRoot.createEl("img", {
           cls: "puml-viewer-image puml-is-hidden"
         });
-        const objectUrl = await this.plugin.fetchPngObjectUrl(source, "plantuml");
+        const objectUrl = await this.plugin.fetchPngObjectUrl(source, diagramType);
         img.src = objectUrl;
-        img.alt = this.currentFile.name;
+        img.alt = `${diagramLabel} diagram`;
         img.addEventListener(
           "load",
           () => {
@@ -5821,7 +5850,7 @@ ${error instanceof Error ? error.message : String(error)}`
 
 ${error instanceof Error ? error.message : String(error)}`
       );
-      new import_obsidian.Notice("Plantuml render failed.");
+      new import_obsidian.Notice(`${diagramLabel} render failed.`);
     }
   }
   setZoom(value) {
@@ -6053,7 +6082,7 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Auto refresh").setDesc("Automatically re-render diagram when the .puml file changes.").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Auto refresh").setDesc("Automatically re-render diagram when the source file changes.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoRefresh).onChange(async (value) => {
         this.plugin.settings.autoRefresh = value;
         await this.plugin.saveSettings();

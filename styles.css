@@ -90,8 +90,16 @@
   margin: 0;
 }
 
+.puml-viewer-content-host--view {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+
 .puml-viewer-render-root {
   width: fit-content;
+  margin: auto;
 }
 
 .puml-viewer-error {

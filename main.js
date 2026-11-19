@@ -4712,6 +4712,7 @@ var DEFAULT_SETTINGS = {
   krokiDiagramType: "plantuml",
   localServerUrl: "http://localhost:8000",
   imageFormat: "svg",
+  autoZoom100: true,
   autoRefresh: true,
   lastOpenedPumlPath: "",
   embeddedDefaultView: "diagram",
@@ -5376,6 +5377,8 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.currentFile = null;
     this.mode = "view";
     this.zoom = 1;
+    this.renderedFilePath = null;
+    this.needsCenter = false;
     this.editorGutterEl = null;
     this.editorEl = null;
     this.editorDraft = null;
@@ -5821,6 +5824,7 @@ ${error instanceof Error ? error.message : String(error)}`
             img.removeClass("puml-is-hidden");
             this.statusEl.setText(`Rendered: ${this.currentFile?.name ?? ""}`);
             URL.revokeObjectURL(objectUrl);
+            requestAnimationFrame(() => this.centerViewIfPending());
           },
           { once: true }
         );
@@ -5836,8 +5840,20 @@ ${error instanceof Error ? error.message : String(error)}`
           { once: true }
         );
       }
-      this.fitToWidth();
+      if (this.plugin.settings.autoZoom100) {
+        if (this.renderedFilePath !== this.currentFile.path) {
+          this.renderedFilePath = this.currentFile.path;
+          this.zoom = 1;
+          this.needsCenter = true;
+        }
+        this.applyZoom();
+      } else {
+        this.renderedFilePath = this.currentFile.path;
+        this.fitToWidth();
+      }
+      this.updateZoomLabel();
       this.refreshMainPanAvailability();
+      this.centerViewIfPending();
       if (this.plugin.settings.imageFormat === "svg") {
         this.statusEl.setText(`Rendered: ${this.currentFile.name}`);
       }
@@ -5919,6 +5935,16 @@ ${error instanceof Error ? error.message : String(error)}`
     svgEl.style.maxWidth = CSS_NONE;
     svgEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
     svgEl.style.height = CSS_AUTO;
+  }
+  centerViewIfPending() {
+    if (!this.needsCenter || !this.imageWrapEl) return;
+    const imageEl = this.contentHostEl?.querySelector(".puml-viewer-image");
+    if (imageEl && !(imageEl.naturalWidth > 0)) return;
+    if (!this.contentHostEl?.querySelector(".puml-viewer-render-root")) return;
+    this.needsCenter = false;
+    const wrap = this.imageWrapEl;
+    wrap.scrollLeft = Math.max(0, (wrap.scrollWidth - wrap.clientWidth) / 2);
+    wrap.scrollTop = Math.max(0, (wrap.scrollHeight - wrap.clientHeight) / 2);
   }
   bindMainViewPanning() {
     this.registerDomEvent(this.imageWrapEl, "mousedown", (event) => {
@@ -6079,6 +6105,12 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
       (dropdown) => dropdown.addOption("svg", "SVG").addOption("png", "PNG").setValue(this.plugin.settings.imageFormat).onChange(async (value) => {
         if (value !== "svg" && value !== "png") return;
         this.plugin.settings.imageFormat = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Auto zoom to 100%").setDesc("Open each diagram at 100% and centred. When off, diagrams fit to the pane width.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.autoZoom100).onChange(async (value) => {
+        this.plugin.settings.autoZoom100 = value;
         await this.plugin.saveSettings();
       })
     );

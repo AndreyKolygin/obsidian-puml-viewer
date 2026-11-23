@@ -6595,90 +6595,190 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
   }
+  /** Declarative settings (Obsidian 1.13+): rendered by Obsidian and indexed by settings search. */
+  getSettingDefinitions() {
+    return [
+      {
+        type: "group",
+        heading: "Rendering",
+        items: [
+          {
+            name: "Server type",
+            desc: "Choose which server URL to use for rendering.",
+            control: {
+              type: "dropdown",
+              key: "serverType",
+              options: { plantuml: "Plantuml", kroki: "Kroki", local: "Local" },
+              defaultValue: DEFAULT_SETTINGS.serverType
+            }
+          },
+          {
+            name: "Plantuml server URL",
+            desc: "Example: https://www.plantuml.com/plantuml",
+            control: {
+              type: "text",
+              key: "plantumlServerUrl",
+              placeholder: "https://www.plantuml.com/plantuml"
+            }
+          },
+          {
+            name: "Kroki URL",
+            desc: "Example: https://kroki.io. Mermaid diagrams are always rendered via Kroki.",
+            control: { type: "text", key: "krokiServerUrl", placeholder: "https://kroki.io" }
+          },
+          {
+            name: "Kroki diagram type",
+            desc: "Default diagram type for kroki requests outside explicit code block language.",
+            control: {
+              type: "dropdown",
+              key: "krokiDiagramType",
+              options: { plantuml: "Plantuml", mermaid: "Mermaid" },
+              defaultValue: DEFAULT_SETTINGS.krokiDiagramType
+            }
+          },
+          {
+            name: "Local URL",
+            desc: "Use a local server URL.",
+            control: { type: "text", key: "localServerUrl", placeholder: "Local server URL" }
+          },
+          {
+            name: "Image format",
+            desc: "SVG is recommended.",
+            control: {
+              type: "dropdown",
+              key: "imageFormat",
+              options: { svg: "SVG", png: "PNG" },
+              defaultValue: DEFAULT_SETTINGS.imageFormat
+            }
+          },
+          {
+            name: "Auto refresh",
+            desc: "Automatically re-render diagram when the source file changes.",
+            control: { type: "toggle", key: "autoRefresh" }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Editor",
+        items: [
+          {
+            name: "Wrap long lines in editor",
+            desc: "Wrap long lines in the code editor (edit and split modes) instead of scrolling horizontally.",
+            aliases: ["word wrap", "line wrap"],
+            control: { type: "toggle", key: "editorWordWrap" }
+          },
+          {
+            name: "Split preview delay",
+            desc: "Milliseconds to wait after typing stops before the split preview re-renders (150\u20135000).",
+            aliases: ["live preview", "debounce"],
+            control: {
+              type: "number",
+              key: "previewDelayMs",
+              placeholder: "800",
+              min: 150,
+              max: 5e3,
+              step: 50,
+              defaultValue: DEFAULT_SETTINGS.previewDelayMs,
+              validate: (value) => Number.isFinite(value) && value >= 150 && value <= 5e3 ? void 0 : "Enter a number from 150 to 5000."
+            }
+          },
+          {
+            name: "Update split preview only on save",
+            desc: "Do not send drafts to the render server while typing; re-render on save or refresh.",
+            aliases: ["live preview"],
+            control: { type: "toggle", key: "previewOnSaveOnly" }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Embedded blocks",
+        items: [
+          {
+            name: "Embedded block default view",
+            desc: "Choose what to show first in embedded diagram blocks.",
+            control: {
+              type: "dropdown",
+              key: "embeddedDefaultView",
+              options: { diagram: "Diagram", code: "Code" },
+              defaultValue: DEFAULT_SETTINGS.embeddedDefaultView
+            }
+          },
+          {
+            name: "Embedded diagram alignment",
+            desc: "Default alignment for diagrams in embedded diagram blocks.",
+            control: {
+              type: "dropdown",
+              key: "embeddedDiagramAlign",
+              options: { left: "Left", center: "Center", right: "Right" },
+              defaultValue: DEFAULT_SETTINGS.embeddedDiagramAlign
+            }
+          }
+        ]
+      }
+    ];
+  }
+  async setControlValue(key, value) {
+    await this.applySettingValue(key, value);
+  }
+  /** Normalizes, persists and applies a single setting change (shared by both render paths). */
+  async applySettingValue(key, value) {
+    if (!(key in DEFAULT_SETTINGS)) return;
+    const settingKey = key;
+    let normalized = value;
+    if (typeof DEFAULT_SETTINGS[settingKey] === "number") {
+      const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
+      if (!Number.isFinite(parsed)) return;
+      normalized = settingKey === "previewDelayMs" ? Math.min(5e3, Math.max(150, Math.round(parsed))) : parsed;
+    } else if (typeof DEFAULT_SETTINGS[settingKey] === "boolean") {
+      normalized = value === true;
+    } else if (typeof value === "string") {
+      normalized = value.trim();
+    } else {
+      return;
+    }
+    this.plugin.settings[settingKey] = normalized;
+    await this.plugin.saveSettings();
+    if (settingKey === "editorWordWrap") this.plugin.applyEditorWrapToOpenViews();
+    if (settingKey === "embeddedDiagramAlign") this.plugin.rerenderMarkdownPreviews();
+  }
+  /**
+   * Fallback for Obsidian < 1.13 (not called when getSettingDefinitions() is supported).
+   * Renders the same definitions imperatively so both paths stay in sync.
+   */
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("Plantuml viewer").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Server type").setDesc("Choose which server URL to use for rendering.").addDropdown(
-      (dropdown) => dropdown.addOption("plantuml", "Plantuml").addOption("kroki", "Kroki").addOption("local", "Local").setValue(this.plugin.settings.serverType).onChange(async (value) => {
-        if (value !== "plantuml" && value !== "kroki" && value !== "local") return;
-        this.plugin.settings.serverType = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Plantuml server URL").setDesc("Example: https://www.plantuml.com/plantuml").addText(
-      (text) => text.setPlaceholder("https://www.plantuml.com/plantuml").setValue(this.plugin.settings.plantumlServerUrl).onChange(async (value) => {
-        this.plugin.settings.plantumlServerUrl = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Kroki URL").setDesc("Example: https://kroki.io").addText(
-      (text) => text.setPlaceholder("https://kroki.io").setValue(this.plugin.settings.krokiServerUrl).onChange(async (value) => {
-        this.plugin.settings.krokiServerUrl = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Kroki diagram type").setDesc("Default diagram type for kroki requests outside explicit code block language.").addDropdown(
-      (dropdown) => dropdown.addOption("plantuml", "Plantuml").addOption("mermaid", "Mermaid").setValue(this.plugin.settings.krokiDiagramType).onChange(async (value) => {
-        if (value !== "plantuml" && value !== "mermaid") return;
-        this.plugin.settings.krokiDiagramType = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Local URL").setDesc("Use a local server URL.").addText(
-      (text) => text.setPlaceholder("Local server URL").setValue(this.plugin.settings.localServerUrl).onChange(async (value) => {
-        this.plugin.settings.localServerUrl = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Image format").setDesc("SVG is recommended.").addDropdown(
-      (dropdown) => dropdown.addOption("svg", "SVG").addOption("png", "PNG").setValue(this.plugin.settings.imageFormat).onChange(async (value) => {
-        if (value !== "svg" && value !== "png") return;
-        this.plugin.settings.imageFormat = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Auto refresh").setDesc("Automatically re-render diagram when the source file changes.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.autoRefresh).onChange(async (value) => {
-        this.plugin.settings.autoRefresh = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Wrap long lines in editor").setDesc("Wrap long lines in the code editor (edit and split modes) instead of scrolling horizontally.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.editorWordWrap).onChange(async (value) => {
-        this.plugin.settings.editorWordWrap = value;
-        await this.plugin.saveSettings();
-        this.plugin.applyEditorWrapToOpenViews();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Split preview delay").setDesc("Milliseconds to wait after typing stops before the split preview re-renders (150\u20135000).").addText(
-      (text) => text.setPlaceholder("800").setValue(String(this.plugin.settings.previewDelayMs)).onChange(async (value) => {
-        const parsed = Number.parseInt(value, 10);
-        if (!Number.isFinite(parsed)) return;
-        this.plugin.settings.previewDelayMs = Math.min(5e3, Math.max(150, parsed));
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Update split preview only on save").setDesc("Do not send drafts to the render server while typing; re-render on save or refresh.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.previewOnSaveOnly).onChange(async (value) => {
-        this.plugin.settings.previewOnSaveOnly = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Embedded block default view").setDesc("Choose what to show first in embedded diagram blocks.").addDropdown(
-      (dropdown) => dropdown.addOption("diagram", "Diagram").addOption("code", "Code").setValue(this.plugin.settings.embeddedDefaultView).onChange(async (value) => {
-        if (value !== "diagram" && value !== "code") return;
-        this.plugin.settings.embeddedDefaultView = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Embedded diagram alignment").setDesc("Default alignment for diagrams in embedded diagram blocks.").addDropdown(
-      (dropdown) => dropdown.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(this.plugin.settings.embeddedDiagramAlign).onChange(async (value) => {
-        if (value !== "left" && value !== "center" && value !== "right") return;
-        this.plugin.settings.embeddedDiagramAlign = value;
-        await this.plugin.saveSettings();
-        this.plugin.rerenderMarkdownPreviews();
-      })
-    );
+    const settings = this.plugin.settings;
+    const asText = (value) => typeof value === "string" || typeof value === "number" ? String(value) : "";
+    for (const item of this.getSettingDefinitions()) {
+      if (!("type" in item) || item.type !== "group") continue;
+      if (item.heading) new import_obsidian.Setting(containerEl).setName(item.heading).setHeading();
+      for (const child of item.items ?? []) {
+        if (!("control" in child) || !child.control) continue;
+        const { control } = child;
+        const setting = new import_obsidian.Setting(containerEl).setName(child.name);
+        if (typeof child.desc === "string") setting.setDesc(child.desc);
+        const current = settings[control.key];
+        if (control.type === "dropdown") {
+          setting.addDropdown((dropdown) => {
+            for (const [optionValue, label] of Object.entries(control.options)) {
+              dropdown.addOption(optionValue, label);
+            }
+            dropdown.setValue(asText(current ?? control.defaultValue));
+            dropdown.onChange((value) => void this.applySettingValue(control.key, value));
+          });
+        } else if (control.type === "toggle") {
+          setting.addToggle(
+            (toggle) => toggle.setValue(current === true).onChange((value) => void this.applySettingValue(control.key, value))
+          );
+        } else if (control.type === "text" || control.type === "number") {
+          setting.addText(
+            (text) => text.setPlaceholder(control.placeholder ?? "").setValue(asText(current)).onChange((value) => void this.applySettingValue(control.key, value))
+          );
+        }
+      }
+    }
   }
 };

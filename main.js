@@ -4694,6 +4694,7 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
+var import_view = require("@codemirror/view");
 var import_plantuml_encoder = __toESM(require_browser_index());
 var VIEW_TYPE_PUML = "puml-viewer";
 var encodePlantuml = import_plantuml_encoder.encode;
@@ -4705,6 +4706,22 @@ var SUPPORTED_DIAGRAM_EXTENSIONS = [
   ...SUPPORTED_PLANTUML_EXTENSIONS,
   ...SUPPORTED_MERMAID_EXTENSIONS
 ];
+var DIAGRAM_SOURCE_EXTENSION = { plantuml: "puml", mermaid: "mmd" };
+function buildFencedCodeBlock(source, language, widthHintPx) {
+  const body = source.replace(/\n+$/, "");
+  let fenceLength = 3;
+  for (const match of body.matchAll(/^\s*(`{3,})/gm)) {
+    fenceLength = Math.max(fenceLength, match[1].length + 1);
+  }
+  const fence = "`".repeat(fenceLength);
+  const hint = widthHintPx ? ` |${widthHintPx}` : "";
+  return `${fence}${language}${hint}
+${body}
+${fence}`;
+}
+function sanitizeFileBaseName(name) {
+  return name.replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/\s+/g, " ").trim().replace(/^\.+/, "");
+}
 var DEFAULT_SETTINGS = {
   serverType: "plantuml",
   plantumlServerUrl: "https://www.plantuml.com/plantuml",
@@ -4715,8 +4732,15 @@ var DEFAULT_SETTINGS = {
   autoRefresh: true,
   lastOpenedPumlPath: "",
   embeddedDefaultView: "diagram",
-  embeddedDiagramAlign: "center"
+  embeddedDiagramAlign: "center",
+  splitRatio: 0.5,
+  previewDelayMs: 800,
+  previewOnSaveOnly: false,
+  editorWordWrap: false
 };
+var SPLIT_STACK_BREAKPOINT_PX = 700;
+var SPLIT_RATIO_MIN = 0.15;
+var SPLIT_RATIO_MAX = 0.85;
 function getDiagramTypeByExtension(extension) {
   const normalized = extension.toLowerCase();
   if (SUPPORTED_PLANTUML_EXTENSIONS.includes(normalized)) return "plantuml";
@@ -4772,6 +4796,10 @@ function parseSvgMarkup(svgMarkup) {
   return normalized;
 }
 var PUMLViewerPlugin = class extends import_obsidian.Plugin {
+  constructor() {
+    super(...arguments);
+    this.livePreviewMermaidKeys = /* @__PURE__ */ new WeakMap();
+  }
   async onload() {
     await this.loadSettings();
     this.registerView(VIEW_TYPE_PUML, (leaf) => new PUMLViewerView(leaf, this));
@@ -4802,9 +4830,10 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
           source,
           lang
         );
-        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, lang);
+        await this.renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, lang, ctx.sourcePath);
       });
     }
+    this.registerEditorExtension(this.createLivePreviewMermaidExtension());
     this.addSettingTab(new PUMLViewerSettingTab(this.app, this));
   }
   onunload() {
@@ -4962,7 +4991,7 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
   async downloadDiagram(source, baseName = "diagram", diagramType) {
     await this.downloadDiagramAs(source, this.settings.imageFormat, baseName, diagramType);
   }
-  async renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, diagramType) {
+  async renderEmbeddedDiagramBlock(source, el, fenceWidthHintPx, diagramType, sourcePath) {
     const diagramLabel = diagramType === "mermaid" ? "Mermaid" : "PlantUML";
     const { renderSource, widthHintPx } = this.extractEmbeddedWidthHint(source, fenceWidthHintPx);
     const container = el.createDiv({ cls: "puml-embed-block" });
@@ -4971,10 +5000,15 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     const zoomBtn = actionsEl.createEl("button", { cls: "puml-embed-zoom-btn", text: "Zoom" });
     const saveBtn = actionsEl.createEl("button", { cls: "puml-embed-save-btn", text: "Save" });
     const copyBtn = actionsEl.createEl("button", { cls: "puml-embed-copy-btn", text: "Copy" });
+    const copyBlockBtn = actionsEl.createEl("button", {
+      cls: "puml-embed-copy-btn",
+      text: "Copy block"
+    });
     toggleBtn.setAttr("aria-label", "Toggle code and diagram");
     zoomBtn.setAttr("aria-label", "Open zoom overlay");
     saveBtn.setAttr("aria-label", "Save image");
     copyBtn.setAttr("aria-label", "Copy code");
+    copyBlockBtn.setAttr("aria-label", `Copy as \`\`\`${diagramType} code block`);
     const diagramPane = container.createDiv({ cls: "puml-embed-diagram" });
     if (widthHintPx) {
       diagramPane.addClass("puml-embed-diagram--constrained");
@@ -4988,6 +5022,8 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       const lineEl = codeEl.createSpan({ cls: "puml-embed-code-line" });
       if (diagramType === "plantuml") {
         this.renderPlantUmlHighlightedLine(lineEl, line);
+      } else if (diagramType === "mermaid") {
+        this.renderMermaidHighlightedLine(lineEl, line);
       } else {
         lineEl.setText(line);
       }
@@ -5004,16 +5040,16 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
         toggleBtn.setText("Diagram");
         toggleBtn.setAttr("aria-label", "Show diagram");
         zoomBtn.addClass("is-hidden");
-        saveBtn.addClass("is-hidden");
         copyBtn.removeClass("is-hidden");
+        copyBlockBtn.removeClass("is-hidden");
       } else {
         codePane.hide();
         diagramPane.show();
         toggleBtn.setText("Code");
         toggleBtn.setAttr("aria-label", "Show code");
         zoomBtn.removeClass("is-hidden");
-        saveBtn.removeClass("is-hidden");
         copyBtn.addClass("is-hidden");
+        copyBlockBtn.addClass("is-hidden");
       }
     };
     toggleBtn.addEventListener("click", () => {
@@ -5237,7 +5273,29 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
           }
         })
       );
+      menu.addSeparator();
+      menu.addItem(
+        (item) => item.setTitle(`Save as .${DIAGRAM_SOURCE_EXTENSION[diagramType]} file`).onClick(async () => {
+          try {
+            await this.saveSourceAsFile(renderSource, diagramType, sourcePath);
+          } catch (error) {
+            new import_obsidian.Notice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })
+      );
       menu.showAtMouseEvent(event);
+    });
+    copyBlockBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await navigator.clipboard.writeText(
+            buildFencedCodeBlock(source, diagramType, fenceWidthHintPx)
+          );
+          new import_obsidian.Notice(`${diagramLabel} code block copied.`);
+        } catch (error) {
+          new import_obsidian.Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })();
     });
     copyBtn.addEventListener("click", () => {
       void (async () => {
@@ -5306,6 +5364,147 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       });
     }
   }
+  async saveSourceAsFile(source, diagramType, sourcePath) {
+    if (!source.trim()) {
+      new import_obsidian.Notice("Diagram code is empty.");
+      return;
+    }
+    const ext = DIAGRAM_SOURCE_EXTENSION[diagramType];
+    const noteFile = sourcePath ? this.app.vault.getAbstractFileByPath(sourcePath) : null;
+    const folder = noteFile instanceof import_obsidian.TFile ? noteFile.parent?.path ?? "" : "";
+    const startUmlName = diagramType === "plantuml" ? source.match(/^\s*@start\w+\s+(.+?)\s*$/m)?.[1] : void 0;
+    const baseName = sanitizeFileBaseName(startUmlName ?? "") || (noteFile instanceof import_obsidian.TFile ? sanitizeFileBaseName(noteFile.basename) : "") || `${diagramType}-diagram`;
+    const defaultPath = (0, import_obsidian.normalizePath)(
+      folder && folder !== "/" ? `${folder}/${baseName}.${ext}` : `${baseName}.${ext}`
+    );
+    const outputPath = await this.resolveExportOutputPath(defaultPath);
+    if (!outputPath) return;
+    const content = source.endsWith("\n") ? source : `${source}
+`;
+    const existing = this.app.vault.getAbstractFileByPath(outputPath);
+    if (existing instanceof import_obsidian.TFile) {
+      await this.app.vault.modify(existing, content);
+    } else if (existing) {
+      throw new Error(`"${outputPath}" is not a file.`);
+    } else {
+      await this.app.vault.create(outputPath, content);
+    }
+    new import_obsidian.Notice(`Saved: ${outputPath}`);
+  }
+  async resolveExportOutputPath(defaultPath) {
+    const existing = this.app.vault.getAbstractFileByPath(defaultPath);
+    if (!existing) return defaultPath;
+    if (!(existing instanceof import_obsidian.TFile)) {
+      return this.getNextAvailableExportPath(defaultPath);
+    }
+    const action = await new Promise((resolve) => {
+      new ExportConflictModal(this.app, defaultPath, resolve).open();
+    });
+    if (action === "cancel") return null;
+    if (action === "overwrite") return defaultPath;
+    return this.getNextAvailableExportPath(defaultPath);
+  }
+  getNextAvailableExportPath(path) {
+    const slashIndex = path.lastIndexOf("/");
+    const dir = slashIndex >= 0 ? path.slice(0, slashIndex) : "";
+    const fileName = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+    const dotIndex = fileName.lastIndexOf(".");
+    const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const ext = dotIndex > 0 ? fileName.slice(dotIndex) : "";
+    let index = 1;
+    while (index < 1e4) {
+      const candidateName = `${base}-${index}${ext}`;
+      const candidatePath = (0, import_obsidian.normalizePath)(dir ? `${dir}/${candidateName}` : candidateName);
+      if (!this.app.vault.getAbstractFileByPath(candidatePath)) {
+        return candidatePath;
+      }
+      index += 1;
+    }
+    throw new Error(`Could not find available file name for "${path}".`);
+  }
+  createLivePreviewMermaidExtension() {
+    const sync = (view) => this.syncLivePreviewMermaidBlocks(view);
+    return import_view.ViewPlugin.fromClass(
+      class {
+        constructor(view) {
+          this.view = view;
+          this.scheduled = false;
+          this.destroyed = false;
+          this.observer = new MutationObserver(() => this.schedule());
+          this.observer.observe(view.contentDOM, { childList: true, subtree: true });
+          this.schedule();
+        }
+        update(update) {
+          if (update.docChanged || update.viewportChanged) this.schedule();
+        }
+        destroy() {
+          this.destroyed = true;
+          this.observer.disconnect();
+        }
+        schedule() {
+          if (this.scheduled || this.destroyed) return;
+          this.scheduled = true;
+          this.view.dom.win.requestAnimationFrame(() => {
+            this.scheduled = false;
+            if (!this.destroyed) sync(this.view);
+          });
+        }
+      }
+    );
+  }
+  syncLivePreviewMermaidBlocks(view) {
+    const widgets = view.contentDOM.querySelectorAll(
+      ".cm-preview-code-block.cm-lang-mermaid"
+    );
+    widgets.forEach((widgetEl) => {
+      const block = this.readLivePreviewMermaidFence(view, widgetEl);
+      if (!block) return;
+      const key = `${block.widthHintPx ?? ""}
+${block.source}`;
+      if (this.livePreviewMermaidKeys.get(widgetEl) === key) return;
+      this.livePreviewMermaidKeys.set(widgetEl, key);
+      widgetEl.addClass("puml-mermaid-takeover");
+      Array.from(widgetEl.children).forEach((child) => {
+        if (child.hasClass("puml-mermaid-host")) child.remove();
+      });
+      const host = widgetEl.createDiv({ cls: "puml-mermaid-host" });
+      const sourcePath = view.state.field(import_obsidian.editorInfoField, false)?.file?.path ?? "";
+      void this.renderEmbeddedDiagramBlock(
+        block.source,
+        host,
+        block.widthHintPx,
+        "mermaid",
+        sourcePath
+      );
+    });
+  }
+  readLivePreviewMermaidFence(view, widgetEl) {
+    let pos;
+    try {
+      pos = view.posAtDOM(widgetEl);
+    } catch {
+      return null;
+    }
+    const doc = view.state.doc;
+    const openerRegex = /^\s*(`{3,}|~{3,})\s*mermaid\b(.*)$/i;
+    const firstLine = doc.lineAt(pos).number;
+    for (let lineNo = firstLine; lineNo <= Math.min(doc.lines, firstLine + 1); lineNo++) {
+      const opener = doc.line(lineNo).text.match(openerRegex);
+      if (!opener) continue;
+      const fence = opener[1];
+      const closerRegex = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
+      const bodyLines = [];
+      for (let n = lineNo + 1; n <= doc.lines; n++) {
+        const text = doc.line(n).text;
+        if (closerRegex.test(text)) break;
+        bodyLines.push(text);
+      }
+      const widthMatch = (opener[2] ?? "").match(/\|(\d{2,4})/);
+      const widthHintPx = widthMatch ? Math.min(6e3, Math.max(120, Number(widthMatch[1]))) : null;
+      return { source: bodyLines.join("\n"), widthHintPx };
+    }
+    return null;
+  }
   extractEmbeddedWidthHint(source, fenceWidthHintPx) {
     if (fenceWidthHintPx) {
       return { renderSource: source, widthHintPx: fenceWidthHintPx };
@@ -5340,6 +5539,20 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
     }
     return null;
   }
+  renderHighlightedLine(target, line, diagramType) {
+    if (diagramType === "plantuml") {
+      this.renderPlantUmlHighlightedLine(target, line);
+    } else if (diagramType === "mermaid") {
+      this.renderMermaidHighlightedLine(target, line);
+    } else {
+      target.appendText(line);
+    }
+  }
+  applyEditorWrapToOpenViews() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_PUML)) {
+      if (leaf.view instanceof PUMLViewerView) leaf.view.applyEditorWrap();
+    }
+  }
   renderPlantUmlHighlightedLine(target, line) {
     const trimmed = line.trimStart();
     if (trimmed.startsWith("'") || trimmed.startsWith("//")) {
@@ -5369,6 +5582,63 @@ var PUMLViewerPlugin = class extends import_obsidian.Plugin {
       target.appendText(line.slice(lastIndex));
     }
   }
+  renderMermaidHighlightedLine(target, line) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("%%{")) {
+      target.createSpan({ cls: "puml-code-directive", text: line });
+      return;
+    }
+    if (trimmed.startsWith("%%")) {
+      target.createSpan({ cls: "puml-code-comment", text: line });
+      return;
+    }
+    const tokenRegex = new RegExp(
+      [
+        // Message / label text after ":" stays plain (avoids highlighting words like "and", "end").
+        String.raw`(?<rest>:(?!::).*$)`,
+        String.raw`(?<arrow><\|--|<\|\.\.|[|}][|o](?:--|\.\.)[o|][|{]|<?-\.+->?|<?={2,}>?|<?-{2,}(?:>>|[>xo)])?|-(?:>>|[>x)])|\.\.\|?>|\.\.|~~~|[*o]--)`,
+        String.raw`(?<string>"[^"]*"|\|[^|]*\|)`,
+        String.raw`(?<label>\(\([^)]*\)\)|\[\[[^\]]*\]\]|\[\([^)]*\)\]|\(\[[^\]]*\]\)|\{\{[^}]*\}\}|\[[^\]]*\]|\([^)]*\)|\{[^}]*\})`,
+        String.raw`(?<diagram>\b(?:graph|flowchart|sequenceDiagram|classDiagram(?:-v2)?|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|C4Deployment|sankey-beta|xychart-beta|block-beta|packet-beta|architecture-beta|kanban|radar-beta)\b)`,
+        String.raw`(?<keyword>\b(?:subgraph|end|direction|TB|TD|BT|RL|LR|participant|actor|as|loop|alt|else|opt|par|and|critical|break|rect|box|note|Note|left of|right of|over|activate|deactivate|autonumber|create|destroy|title|section|class|classDef|style|linkStyle|click|call|href|state|namespace|dateFormat|axisFormat|tickInterval|excludes|includes|todayMarker|accTitle|accDescr|commit|branch|checkout|merge|cherry-pick|showData)\b)`,
+        String.raw`(?<style>:::[A-Za-z_][\w-]*)`
+      ].join("|"),
+      "g"
+    );
+    let lastIndex = 0;
+    let match = tokenRegex.exec(line);
+    while (match) {
+      const start = match.index;
+      const token = match[0];
+      if (!token) {
+        tokenRegex.lastIndex += 1;
+        match = tokenRegex.exec(line);
+        continue;
+      }
+      if (start > lastIndex) {
+        target.appendText(line.slice(lastIndex, start));
+      }
+      const groups = match.groups ?? {};
+      if (groups.rest !== void 0) {
+        target.appendText(token);
+      } else {
+        let cls = "puml-code-keyword";
+        if (groups.string !== void 0 || groups.label !== void 0) {
+          cls = "puml-code-string";
+        } else if (groups.arrow !== void 0) {
+          cls = "puml-code-arrow";
+        } else if (groups.diagram !== void 0 || groups.style !== void 0) {
+          cls = "puml-code-directive";
+        }
+        target.createSpan({ cls, text: token });
+      }
+      lastIndex = start + token.length;
+      match = tokenRegex.exec(line);
+    }
+    if (lastIndex < line.length) {
+      target.appendText(line.slice(lastIndex));
+    }
+  }
 };
 var PUMLViewerView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
@@ -5377,6 +5647,9 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.mode = "view";
     this.zoom = 1;
     this.editorGutterEl = null;
+    this.editorHighlightEl = null;
+    this.editorShellEl = null;
+    this.editorResizeObserver = null;
     this.editorEl = null;
     this.editorDraft = null;
     this.draftFilePath = null;
@@ -5386,6 +5659,15 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.mainPanStartY = 0;
     this.mainPanScrollLeft = 0;
     this.mainPanScrollTop = 0;
+    this.mainPanEl = null;
+    this.previewScrollEl = null;
+    this.previewErrorEl = null;
+    this.previewBadgeEl = null;
+    this.previewTimer = null;
+    this.previewSeq = 0;
+    this.lastPreviewSource = null;
+    this.previewFitted = false;
+    this.splitResizeObserver = null;
     this.plugin = plugin;
   }
   getViewType() {
@@ -5414,6 +5696,11 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.editModeBtn.addEventListener("click", () => {
       void this.switchMode("edit");
     });
+    this.splitModeBtn = toolbar.createEl("button", { text: "Split" });
+    this.splitModeBtn.setAttr("aria-label", "Edit code with live preview");
+    this.splitModeBtn.addEventListener("click", () => {
+      void this.switchMode("split");
+    });
     this.saveBtn = toolbar.createEl("button", { text: "Save" });
     this.saveBtn.addEventListener("click", () => {
       void this.saveEditor();
@@ -5434,6 +5721,8 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     refreshBtn.addEventListener("click", () => {
       if (this.mode === "view") {
         void this.renderDiagram();
+      } else if (this.mode === "split") {
+        void this.updatePreview(true);
       } else {
         void this.reloadEditorFromFile();
       }
@@ -5452,6 +5741,11 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
     this.exportAsciiBtn.setAttr("aria-label", "Save ASCII art");
     this.exportAsciiBtn.addEventListener("click", () => {
       void this.exportDiagram("txt");
+    });
+    this.copyBlockBtn = toolbar.createEl("button", { cls: "puml-toolbar-export-btn", text: "Copy block" });
+    this.copyBlockBtn.setAttr("aria-label", "Copy as markdown code block");
+    this.copyBlockBtn.addEventListener("click", () => {
+      void this.copyAsCodeBlock();
     });
     this.statusEl = toolbar.createDiv({ cls: "puml-viewer-status" });
     this.statusEl.setText("Waiting for file...");
@@ -5479,6 +5773,11 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
       })
     );
   }
+  async onClose() {
+    this.teardownSplit();
+    this.editorResizeObserver?.disconnect();
+    this.editorResizeObserver = null;
+  }
   async setState(state, result) {
     await super.setState(state, result);
     const viewState = state ?? {};
@@ -5502,7 +5801,7 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
   async loadFileFromState() {
     const state = this.leaf.getViewState().state;
     const mode = state?.mode;
-    if (mode === "view" || mode === "edit") {
+    if (mode === "view" || mode === "edit" || mode === "split") {
       this.mode = mode;
       this.updateToolbarState();
     }
@@ -5546,23 +5845,35 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
       await this.renderEditor();
       return;
     }
+    if (this.mode === "split") {
+      await this.renderSplit();
+      return;
+    }
     await this.renderDiagram();
   }
   updateToolbarState() {
-    if (!this.viewModeBtn || !this.editModeBtn || !this.saveBtn || !this.zoomOutBtn || !this.zoomResetBtn || !this.zoomInBtn || !this.exportPngBtn || !this.exportSvgBtn || !this.exportAsciiBtn)
+    if (!this.viewModeBtn || !this.editModeBtn || !this.saveBtn || !this.zoomOutBtn || !this.zoomResetBtn || !this.zoomInBtn || !this.exportPngBtn || !this.exportSvgBtn || !this.exportAsciiBtn || !this.copyBlockBtn)
       return;
     this.viewModeBtn.toggleClass("is-active", this.mode === "view");
     this.editModeBtn.toggleClass("is-active", this.mode === "edit");
-    this.saveBtn.disabled = this.mode !== "edit";
-    const zoomDisabled = this.mode !== "view";
-    this.zoomOutBtn.disabled = zoomDisabled;
-    this.zoomResetBtn.disabled = zoomDisabled;
-    this.zoomInBtn.disabled = zoomDisabled;
+    this.splitModeBtn?.toggleClass("is-active", this.mode === "split");
+    const showsDiagram = this.mode === "view" || this.mode === "split";
+    const hasEditor = this.mode === "edit" || this.mode === "split";
     const diagramType = this.getCurrentDiagramType();
-    const exportDisabled = zoomDisabled || !this.currentFile || !diagramType;
-    this.exportPngBtn.disabled = exportDisabled;
-    this.exportSvgBtn.disabled = exportDisabled;
-    this.exportAsciiBtn.disabled = exportDisabled || diagramType === "mermaid";
+    const canExport = showsDiagram && !!this.currentFile && !!diagramType;
+    const setAvailable = (button, available) => {
+      button.disabled = !available;
+      button.toggle(available);
+    };
+    setAvailable(this.saveBtn, hasEditor);
+    setAvailable(this.zoomOutBtn, showsDiagram);
+    setAvailable(this.zoomResetBtn, showsDiagram);
+    setAvailable(this.zoomInBtn, showsDiagram);
+    setAvailable(this.exportPngBtn, canExport);
+    setAvailable(this.exportSvgBtn, canExport);
+    setAvailable(this.exportAsciiBtn, canExport && diagramType !== "mermaid");
+    setAvailable(this.copyBlockBtn, !!this.currentFile && !!diagramType);
+    this.zoomValueEl?.toggle(showsDiagram);
     this.updateZoomLabel();
   }
   resetDraftIfFileChanged() {
@@ -5573,37 +5884,67 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
       this.draftFilePath = filePath;
     }
   }
-  async renderEditor() {
+  resetContentHost(layout) {
+    this.teardownSplit();
     this.contentHostEl.empty();
-    this.contentHostEl.addClass("puml-viewer-content-host--editor");
-    this.contentHostEl.removeClass("puml-viewer-content-host--view");
-    this.imageWrapEl.removeClass("puml-viewer-image-wrap--view");
+    this.contentHostEl.toggleClass("puml-viewer-content-host--view", layout === "view");
+    this.contentHostEl.toggleClass("puml-viewer-content-host--editor", layout === "editor");
+    this.contentHostEl.toggleClass("puml-viewer-content-host--split", layout === "split");
+    this.contentHostEl.removeClass("is-stacked");
+    this.imageWrapEl.toggleClass("puml-viewer-image-wrap--view", layout === "view");
     this.imageWrapEl.removeClass("is-pan-enabled");
     this.imageWrapEl.removeClass("is-panning");
     this.isMainPanning = false;
+    this.mainPanEl = null;
+    this.editorResizeObserver?.disconnect();
+    this.editorResizeObserver = null;
+    this.editorShellEl = null;
+    this.editorGutterEl = null;
+    this.editorHighlightEl = null;
+    this.editorEl = null;
+  }
+  async renderEditor() {
+    this.resetContentHost("editor");
     if (!this.currentFile) {
       this.statusEl.setText("No diagram file selected.");
       return;
     }
+    await this.buildEditor(this.contentHostEl);
+  }
+  /** Builds the highlighted code editor inside `parent`. Returns false if the source could not be loaded. */
+  async buildEditor(parent) {
+    if (!this.currentFile) return false;
     try {
       const initialText = this.draftFilePath === this.currentFile.path && this.editorDraft !== null ? this.editorDraft : await this.app.vault.read(this.currentFile);
       this.editorDraft = initialText;
       this.draftFilePath = this.currentFile.path;
-      const editorShell = this.contentHostEl.createDiv({ cls: "puml-viewer-editor-shell" });
+      const editorShell = parent.createDiv({ cls: "puml-viewer-editor-shell" });
+      this.editorShellEl = editorShell;
       this.editorGutterEl = editorShell.createDiv({ cls: "puml-viewer-editor-gutter" });
-      this.editorEl = editorShell.createEl("textarea", { cls: "puml-viewer-editor" });
+      const editorStack = editorShell.createDiv({ cls: "puml-viewer-editor-stack" });
+      this.editorHighlightEl = editorStack.createEl("pre", { cls: "puml-viewer-editor-highlight" });
+      this.editorHighlightEl.setAttr("aria-hidden", "true");
+      this.editorEl = editorStack.createEl("textarea", { cls: "puml-viewer-editor" });
+      this.editorEl.setAttr("spellcheck", "false");
       this.editorEl.value = initialText;
+      this.applyEditorWrap();
       this.updateEditorLineNumbers(initialText);
+      this.updateEditorHighlight(initialText);
+      this.editorResizeObserver = new ResizeObserver(() => this.syncEditorLineGeometry());
+      this.editorResizeObserver.observe(editorStack);
       this.editorEl.addEventListener("input", () => {
         if (!this.editorEl) return;
         this.editorDraft = this.editorEl.value;
         this.isDirty = true;
         this.updateEditorLineNumbers(this.editorEl.value);
+        this.updateEditorHighlight(this.editorEl.value);
         this.statusEl.setText(`Editing: ${this.currentFile?.name ?? ""} (unsaved)`);
+        this.schedulePreview();
       });
       this.editorEl.addEventListener("scroll", () => {
         if (!this.editorEl || !this.editorGutterEl) return;
         this.editorGutterEl.scrollTop = this.editorEl.scrollTop;
+        this.syncEditorHighlightScroll();
       });
       this.editorEl.addEventListener("keydown", (event) => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -5611,17 +5952,231 @@ var PUMLViewerView = class extends import_obsidian.ItemView {
           void this.saveEditor();
         }
       });
-      this.statusEl.setText(`Editing: ${this.currentFile.name}`);
+      this.statusEl.setText(`Editing: ${this.currentFile.name}${this.isDirty ? " (unsaved)" : ""}`);
+      return true;
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Failed to open editor.");
-      const errorEl = this.contentHostEl.createDiv({ cls: "puml-viewer-error" });
+      const errorEl = parent.createDiv({ cls: "puml-viewer-error" });
       errorEl.setText(
         `Failed to load source text.
 
 ${error instanceof Error ? error.message : String(error)}`
       );
+      return false;
     }
+  }
+  async renderSplit() {
+    this.resetContentHost("split");
+    if (!this.currentFile) {
+      this.statusEl.setText("No diagram file selected.");
+      return;
+    }
+    const host = this.contentHostEl;
+    this.applySplitRatio(this.plugin.settings.splitRatio);
+    const editorPane = host.createDiv({ cls: "puml-viewer-split-editor" });
+    const divider = host.createDiv({ cls: "puml-viewer-split-divider" });
+    divider.setAttr("role", "separator");
+    divider.setAttr("aria-label", "Resize editor and preview");
+    const previewPane = host.createDiv({ cls: "puml-viewer-split-preview" });
+    this.previewScrollEl = previewPane.createDiv({ cls: "puml-viewer-split-preview-scroll" });
+    this.previewErrorEl = previewPane.createDiv({ cls: "puml-viewer-preview-error" });
+    this.previewErrorEl.hide();
+    this.previewBadgeEl = previewPane.createDiv({ cls: "puml-viewer-preview-badge", text: "Updating\u2026" });
+    this.previewBadgeEl.hide();
+    this.splitResizeObserver = new ResizeObserver(() => {
+      host.toggleClass("is-stacked", host.clientWidth < SPLIT_STACK_BREAKPOINT_PX);
+      this.refreshMainPanAvailability();
+    });
+    this.splitResizeObserver.observe(host);
+    host.toggleClass("is-stacked", host.clientWidth < SPLIT_STACK_BREAKPOINT_PX);
+    this.bindSplitDivider(divider);
+    const loaded = await this.buildEditor(editorPane);
+    if (!loaded || this.mode !== "split") return;
+    this.previewFitted = false;
+    this.lastPreviewSource = null;
+    await this.updatePreview(true);
+  }
+  applySplitRatio(ratio) {
+    const clamped = Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, ratio || 0.5));
+    this.contentHostEl.style.setProperty("--puml-split-ratio", `${(clamped * 100).toFixed(2)}%`);
+  }
+  bindSplitDivider(divider) {
+    const host = this.contentHostEl;
+    divider.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      divider.setPointerCapture(event.pointerId);
+      host.addClass("is-resizing");
+      let ratio = this.plugin.settings.splitRatio;
+      const onMove = (moveEvent) => {
+        const rect = host.getBoundingClientRect();
+        const stacked = host.hasClass("is-stacked");
+        const raw = stacked ? (moveEvent.clientY - rect.top) / Math.max(1, rect.height) : (moveEvent.clientX - rect.left) / Math.max(1, rect.width);
+        ratio = Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, raw));
+        this.applySplitRatio(ratio);
+      };
+      const onUp = () => {
+        divider.removeEventListener("pointermove", onMove);
+        divider.removeEventListener("pointerup", onUp);
+        divider.removeEventListener("pointercancel", onUp);
+        host.removeClass("is-resizing");
+        this.refreshMainPanAvailability();
+        if (ratio !== this.plugin.settings.splitRatio) {
+          this.plugin.settings.splitRatio = ratio;
+          void this.plugin.saveSettings();
+        }
+      };
+      divider.addEventListener("pointermove", onMove);
+      divider.addEventListener("pointerup", onUp);
+      divider.addEventListener("pointercancel", onUp);
+    });
+  }
+  teardownSplit() {
+    if (this.previewTimer !== null) {
+      window.clearTimeout(this.previewTimer);
+      this.previewTimer = null;
+    }
+    this.previewSeq += 1;
+    this.splitResizeObserver?.disconnect();
+    this.splitResizeObserver = null;
+    this.previewScrollEl = null;
+    this.previewErrorEl = null;
+    this.previewBadgeEl = null;
+  }
+  schedulePreview() {
+    if (this.mode !== "split" || this.plugin.settings.previewOnSaveOnly) return;
+    if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
+    const delay = Math.min(5e3, Math.max(150, this.plugin.settings.previewDelayMs || 800));
+    this.previewTimer = window.setTimeout(() => {
+      this.previewTimer = null;
+      void this.updatePreview(false);
+    }, delay);
+  }
+  setPreviewError(message) {
+    if (!this.previewErrorEl) return;
+    if (message) {
+      this.previewErrorEl.setText(message);
+      this.previewErrorEl.show();
+    } else {
+      this.previewErrorEl.empty();
+      this.previewErrorEl.hide();
+    }
+  }
+  /** Re-renders the split preview from the editor draft, keeping the last good image while loading. */
+  async updatePreview(force) {
+    const scrollEl = this.previewScrollEl;
+    const diagramType = this.getCurrentDiagramType();
+    if (this.mode !== "split" || !scrollEl || !this.editorEl || !diagramType) return;
+    const source = this.editorEl.value;
+    if (!force && source === this.lastPreviewSource) return;
+    this.lastPreviewSource = source;
+    const seq = ++this.previewSeq;
+    if (!source.trim()) {
+      scrollEl.empty();
+      scrollEl.createDiv({ cls: "puml-loading", text: "Nothing to render yet." });
+      this.setPreviewError(null);
+      return;
+    }
+    const hasPrevious = !!scrollEl.querySelector(".puml-viewer-render-root");
+    if (!hasPrevious) {
+      scrollEl.empty();
+      scrollEl.createDiv({ cls: "puml-loading", text: "Generating diagram..." });
+    }
+    this.previewBadgeEl?.show();
+    const pending = scrollEl.createDiv({ cls: "puml-viewer-render-root-pending" });
+    try {
+      const warning = await this.renderSourceInto(pending, source, diagramType);
+      if (seq !== this.previewSeq || !pending.isConnected) {
+        pending.remove();
+        return;
+      }
+      Array.from(scrollEl.children).forEach((child) => {
+        if (child !== pending) child.remove();
+      });
+      pending.removeClass("puml-viewer-render-root-pending");
+      pending.addClass("puml-viewer-render-root");
+      if (this.previewFitted) {
+        this.applyZoom();
+      } else {
+        this.previewFitted = true;
+        this.fitToWidth();
+      }
+      this.refreshMainPanAvailability();
+      this.setPreviewError(warning);
+    } catch (error) {
+      pending.remove();
+      if (seq !== this.previewSeq) return;
+      scrollEl.querySelectorAll(":scope > .puml-loading").forEach((el) => el.remove());
+      this.setPreviewError(
+        `Render failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      if (!scrollEl.querySelector(".puml-viewer-render-root")) {
+        this.lastPreviewSource = null;
+      }
+    } finally {
+      if (seq === this.previewSeq) this.previewBadgeEl?.hide();
+    }
+  }
+  /**
+   * Renders `source` into `root` (SVG or PNG according to settings).
+   * Returns a warning when the server answered with an error image (PlantUML syntax errors).
+   */
+  async renderSourceInto(root, source, diagramType) {
+    const format = this.plugin.settings.imageFormat;
+    const response = await this.plugin.requestDiagram(source, format, diagramType);
+    const contentType = this.plugin.responseContentType(response);
+    const isImage = format === "svg" ? contentType.includes("image/svg") || !contentType && response.text.includes("<svg") : contentType.includes("image/png") || !contentType && !!response.arrayBuffer;
+    if (response.status !== 200 && !isImage) {
+      let detail = "";
+      try {
+        detail = response.text.trim().slice(0, 1500);
+      } catch {
+        detail = "";
+      }
+      throw new Error(detail ? `HTTP ${response.status}
+${detail}` : `HTTP ${response.status}`);
+    }
+    if (format === "svg") {
+      if (!isImage) {
+        throw new Error(
+          `Expected SVG but got "${contentType}". Check Server type/URL (for Kroki use https://kroki.io).`
+        );
+      }
+      const svgEl = parseSvgMarkup(response.text);
+      if (!svgEl) throw new Error("Response is not valid SVG content.");
+      root.createDiv().appendChild(svgEl);
+    } else {
+      if (!isImage) {
+        throw new Error(
+          `Expected PNG but got "${contentType}". Check Server type/URL (for Kroki use https://kroki.io).`
+        );
+      }
+      if (!response.arrayBuffer) throw new Error("No PNG payload returned by render server");
+      const objectUrl = URL.createObjectURL(new Blob([response.arrayBuffer], { type: "image/png" }));
+      const img = root.createEl("img", { cls: "puml-viewer-image" });
+      img.alt = `${diagramType === "mermaid" ? "Mermaid" : "PlantUML"} diagram`;
+      await new Promise((resolve, reject) => {
+        img.addEventListener(
+          "load",
+          () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve();
+          },
+          { once: true }
+        );
+        img.addEventListener(
+          "error",
+          () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("Failed to load PNG diagram."));
+          },
+          { once: true }
+        );
+        img.src = objectUrl;
+      });
+    }
+    return response.status !== 200 ? `The render server reported an error (HTTP ${response.status}) \u2014 see the diagram above.` : null;
   }
   async reloadEditorFromFile() {
     if (!this.currentFile || !this.editorEl) return;
@@ -5631,14 +6186,16 @@ ${error instanceof Error ? error.message : String(error)}`
       this.draftFilePath = this.currentFile.path;
       this.editorEl.value = source;
       this.updateEditorLineNumbers(source);
+      this.updateEditorHighlight(source);
       this.isDirty = false;
+      if (this.mode === "split") void this.updatePreview(false);
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Failed to reload source.");
     }
   }
   async saveEditor() {
-    if (!this.currentFile || !this.editorEl || this.mode !== "edit") return;
+    if (!this.currentFile || !this.editorEl || this.mode !== "edit" && this.mode !== "split") return;
     try {
       const text = this.editorEl.value;
       await this.app.vault.modify(this.currentFile, text);
@@ -5647,14 +6204,30 @@ ${error instanceof Error ? error.message : String(error)}`
       this.isDirty = false;
       this.statusEl.setText(`Saved: ${this.currentFile.name}`);
       new import_obsidian.Notice("Diagram source saved.");
+      if (this.mode === "split") void this.updatePreview(false);
     } catch (error) {
       console.error(error);
       this.statusEl.setText("Save failed.");
       new import_obsidian.Notice("Failed to save diagram source.");
     }
   }
+  async copyAsCodeBlock() {
+    const diagramType = this.getCurrentDiagramType();
+    if (!this.currentFile || !diagramType) return;
+    try {
+      const source = (this.mode === "edit" || this.mode === "split") && this.editorEl ? this.editorEl.value : await this.app.vault.read(this.currentFile);
+      if (!source.trim()) {
+        new import_obsidian.Notice("Diagram file is empty.");
+        return;
+      }
+      await navigator.clipboard.writeText(buildFencedCodeBlock(source, diagramType, null));
+      new import_obsidian.Notice(`Copied as \`\`\`${diagramType} code block.`);
+    } catch (error) {
+      new import_obsidian.Notice(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   async exportDiagram(format) {
-    if (this.mode !== "view" || !this.currentFile) return;
+    if (this.mode !== "view" && this.mode !== "split" || !this.currentFile) return;
     const diagramType = this.getCurrentDiagramType();
     if (!diagramType) return;
     if (diagramType === "mermaid" && format === "txt") {
@@ -5662,7 +6235,7 @@ ${error instanceof Error ? error.message : String(error)}`
       return;
     }
     try {
-      const source = await this.app.vault.read(this.currentFile);
+      const source = this.mode === "split" && this.editorEl ? this.editorEl.value : await this.app.vault.read(this.currentFile);
       if (!source.trim()) {
         new import_obsidian.Notice("Diagram file is empty.");
         return;
@@ -5670,7 +6243,7 @@ ${error instanceof Error ? error.message : String(error)}`
       const defaultOutputPath = (0, import_obsidian.normalizePath)(
         this.currentFile.path.replace(/\.[^/.]+$/i, `.${format}`)
       );
-      const outputPath = await this.resolveExportOutputPath(defaultOutputPath);
+      const outputPath = await this.plugin.resolveExportOutputPath(defaultOutputPath);
       if (!outputPath) {
         this.statusEl.setText("Export cancelled.");
         return;
@@ -5725,48 +6298,8 @@ ${error instanceof Error ? error.message : String(error)}`
       new import_obsidian.Notice(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  async resolveExportOutputPath(defaultPath) {
-    const existing = this.app.vault.getAbstractFileByPath(defaultPath);
-    if (!existing) return defaultPath;
-    if (!(existing instanceof import_obsidian.TFile)) {
-      return this.getNextAvailableExportPath(defaultPath);
-    }
-    const action = await this.askExportConflict(defaultPath);
-    if (action === "cancel") return null;
-    if (action === "overwrite") return defaultPath;
-    return this.getNextAvailableExportPath(defaultPath);
-  }
-  getNextAvailableExportPath(path) {
-    const slashIndex = path.lastIndexOf("/");
-    const dir = slashIndex >= 0 ? path.slice(0, slashIndex) : "";
-    const fileName = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
-    const dotIndex = fileName.lastIndexOf(".");
-    const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-    const ext = dotIndex > 0 ? fileName.slice(dotIndex) : "";
-    let index = 1;
-    while (index < 1e4) {
-      const candidateName = `${base}-${index}${ext}`;
-      const candidatePath = (0, import_obsidian.normalizePath)(dir ? `${dir}/${candidateName}` : candidateName);
-      if (!this.app.vault.getAbstractFileByPath(candidatePath)) {
-        return candidatePath;
-      }
-      index += 1;
-    }
-    throw new Error(`Could not find available file name for "${path}".`);
-  }
-  askExportConflict(path) {
-    return new Promise((resolve) => {
-      const modal = new ExportConflictModal(this.app, path, resolve);
-      modal.open();
-    });
-  }
   async renderDiagram() {
-    this.contentHostEl.empty();
-    this.contentHostEl.removeClass("puml-viewer-content-host--editor");
-    this.contentHostEl.addClass("puml-viewer-content-host--view");
-    this.imageWrapEl.addClass("puml-viewer-image-wrap--view");
-    this.editorGutterEl = null;
-    this.editorEl = null;
+    this.resetContentHost("view");
     if (!this.currentFile) {
       this.statusEl.setText("No diagram file selected.");
       return;
@@ -5777,73 +6310,28 @@ ${error instanceof Error ? error.message : String(error)}`
       return;
     }
     const diagramLabel = diagramType === "mermaid" ? "Mermaid" : "PlantUML";
+    const file = this.currentFile;
+    const renderSeq = this.previewSeq;
     try {
-      const source = await this.app.vault.read(this.currentFile);
+      const source = await this.app.vault.read(file);
       if (!source.trim()) {
         this.statusEl.setText("File is empty.");
         return;
       }
-      this.statusEl.setText(`Rendering: ${this.currentFile.name}`);
+      this.statusEl.setText(`Rendering: ${file.name}`);
       const renderRoot = this.contentHostEl.createDiv({ cls: "puml-viewer-render-root" });
       const loadingEl = renderRoot.createDiv({ cls: "puml-loading", text: "Generating diagram..." });
-      if (this.plugin.settings.imageFormat === "svg") {
-        const response = await this.plugin.requestDiagram(source, "svg", diagramType);
-        if (response.status !== 200) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const contentType = this.plugin.responseContentType(response);
-        if (contentType && !contentType.includes("image/svg")) {
-          throw new Error(
-            `Expected SVG but got "${contentType}". Check Server type/URL (for Kroki use https://kroki.io).`
-          );
-        }
-        if (!response.text.includes("<svg")) {
-          throw new Error("Response is not SVG content.");
-        }
-        loadingEl.remove();
-        const svgHost = renderRoot.createDiv();
-        const svgEl = parseSvgMarkup(response.text);
-        if (!svgEl) {
-          throw new Error("Response is not valid SVG content.");
-        }
-        svgHost.appendChild(svgEl);
-      } else {
-        const img = renderRoot.createEl("img", {
-          cls: "puml-viewer-image puml-is-hidden"
-        });
-        const objectUrl = await this.plugin.fetchPngObjectUrl(source, diagramType);
-        img.src = objectUrl;
-        img.alt = `${diagramLabel} diagram`;
-        img.addEventListener(
-          "load",
-          () => {
-            loadingEl.remove();
-            img.removeClass("puml-is-hidden");
-            this.statusEl.setText(`Rendered: ${this.currentFile?.name ?? ""}`);
-            URL.revokeObjectURL(objectUrl);
-          },
-          { once: true }
-        );
-        img.addEventListener(
-          "error",
-          () => {
-            loadingEl.remove();
-            this.statusEl.setText("Render failed.");
-            const errorEl = renderRoot.createDiv({ cls: "puml-viewer-error" });
-            errorEl.setText("Failed to load PNG diagram.");
-            URL.revokeObjectURL(objectUrl);
-          },
-          { once: true }
-        );
-      }
+      const warning = await this.renderSourceInto(renderRoot, source, diagramType);
+      if (!renderRoot.isConnected) return;
+      loadingEl.remove();
       this.fitToWidth();
       this.refreshMainPanAvailability();
-      if (this.plugin.settings.imageFormat === "svg") {
-        this.statusEl.setText(`Rendered: ${this.currentFile.name}`);
-      }
+      this.statusEl.setText(warning ?? `Rendered: ${file.name}`);
     } catch (error) {
       console.error(error);
+      if (this.mode !== "view" || renderSeq !== this.previewSeq) return;
       this.statusEl.setText("Render failed.");
+      this.contentHostEl.empty();
       const errorEl = this.contentHostEl.createDiv({ cls: "puml-viewer-error" });
       errorEl.setText(
         `Failed to render diagram.
@@ -5860,9 +6348,16 @@ ${error instanceof Error ? error.message : String(error)}`
     this.refreshMainPanAvailability();
     this.updateZoomLabel();
   }
+  /** Scroll container that holds the diagram in the current mode. */
+  getDiagramScrollEl() {
+    if (this.mode === "view") return this.imageWrapEl ?? null;
+    if (this.mode === "split") return this.previewScrollEl;
+    return null;
+  }
   fitToWidth() {
     const renderRoot = this.contentHostEl?.querySelector(".puml-viewer-render-root");
-    if (!renderRoot || !this.imageWrapEl) return;
+    const scrollEl = this.getDiagramScrollEl();
+    if (!renderRoot || !scrollEl) return;
     const imageEl = renderRoot.querySelector(".puml-viewer-image");
     if (imageEl) {
       const baseWidth2 = this.getImageBaseWidth(imageEl);
@@ -5876,7 +6371,7 @@ ${error instanceof Error ? error.message : String(error)}`
         );
         return;
       }
-      const availableWidth2 = Math.max(1, this.imageWrapEl.clientWidth - 24);
+      const availableWidth2 = Math.max(1, scrollEl.clientWidth - 24);
       this.setZoom(Math.min(1, availableWidth2 / baseWidth2));
       return;
     }
@@ -5884,7 +6379,7 @@ ${error instanceof Error ? error.message : String(error)}`
     if (!svgEl) return;
     const baseWidth = this.getSvgBaseWidth(svgEl);
     if (!(baseWidth > 0)) return;
-    const availableWidth = Math.max(1, this.imageWrapEl.clientWidth - 24);
+    const availableWidth = Math.max(1, scrollEl.clientWidth - 24);
     this.setZoom(Math.min(1, availableWidth / baseWidth));
   }
   updateZoomLabel() {
@@ -5923,43 +6418,48 @@ ${error instanceof Error ? error.message : String(error)}`
   bindMainViewPanning() {
     this.registerDomEvent(this.imageWrapEl, "mousedown", (event) => {
       if (event.button !== 0) return;
-      if (this.mode !== "view") return;
+      const scrollEl = this.getDiagramScrollEl();
+      if (!scrollEl) return;
+      if (this.mode === "split" && !scrollEl.contains(event.target)) return;
       if (!this.canMainPan()) return;
       this.isMainPanning = true;
+      this.mainPanEl = scrollEl;
       this.mainPanStartX = event.clientX;
       this.mainPanStartY = event.clientY;
-      this.mainPanScrollLeft = this.imageWrapEl.scrollLeft;
-      this.mainPanScrollTop = this.imageWrapEl.scrollTop;
-      this.imageWrapEl.addClass("is-panning");
+      this.mainPanScrollLeft = scrollEl.scrollLeft;
+      this.mainPanScrollTop = scrollEl.scrollTop;
+      scrollEl.addClass("is-panning");
       event.preventDefault();
     });
     this.registerDomEvent(window, "mousemove", (event) => {
-      if (!this.isMainPanning) return;
+      if (!this.isMainPanning || !this.mainPanEl) return;
       const dx = event.clientX - this.mainPanStartX;
       const dy = event.clientY - this.mainPanStartY;
-      this.imageWrapEl.scrollLeft = this.mainPanScrollLeft - dx;
-      this.imageWrapEl.scrollTop = this.mainPanScrollTop - dy;
+      this.mainPanEl.scrollLeft = this.mainPanScrollLeft - dx;
+      this.mainPanEl.scrollTop = this.mainPanScrollTop - dy;
       event.preventDefault();
     });
     const stopPanning = () => {
       if (!this.isMainPanning) return;
       this.isMainPanning = false;
-      this.imageWrapEl.removeClass("is-panning");
+      this.mainPanEl?.removeClass("is-panning");
+      this.mainPanEl = null;
     };
     this.registerDomEvent(window, "mouseup", stopPanning);
     this.registerDomEvent(this.imageWrapEl, "mouseleave", stopPanning);
   }
   canMainPan() {
-    const hasHorizontal = this.imageWrapEl.scrollWidth > this.imageWrapEl.clientWidth + 1;
-    const hasVertical = this.imageWrapEl.scrollHeight > this.imageWrapEl.clientHeight + 1;
+    const scrollEl = this.getDiagramScrollEl();
+    if (!scrollEl) return false;
+    const hasHorizontal = scrollEl.scrollWidth > scrollEl.clientWidth + 1;
+    const hasVertical = scrollEl.scrollHeight > scrollEl.clientHeight + 1;
     return hasHorizontal || hasVertical;
   }
   refreshMainPanAvailability() {
-    if (this.mode !== "view") {
-      this.imageWrapEl.removeClass("is-pan-enabled");
-      return;
-    }
-    this.imageWrapEl.toggleClass("is-pan-enabled", this.canMainPan());
+    const scrollEl = this.getDiagramScrollEl();
+    if (scrollEl !== this.imageWrapEl) this.imageWrapEl.removeClass("is-pan-enabled");
+    if (!scrollEl) return;
+    scrollEl.toggleClass("is-pan-enabled", this.canMainPan());
   }
   getImageBaseWidth(imageEl) {
     const storedBaseWidth = Number(imageEl.dataset.baseWidth ?? 0);
@@ -5983,6 +6483,62 @@ ${error instanceof Error ? error.message : String(error)}`
       svgEl.dataset.baseWidth = String(baseWidth);
     }
     return baseWidth;
+  }
+  /** Applies the "wrap long lines" setting to the open editor (called on settings change too). */
+  applyEditorWrap() {
+    if (!this.editorEl || !this.editorShellEl) return;
+    const wrap = this.plugin.settings.editorWordWrap;
+    this.editorShellEl.toggleClass("is-wrapping", wrap);
+    this.editorEl.setAttr("wrap", wrap ? "soft" : "off");
+    this.syncEditorLineGeometry();
+  }
+  updateEditorHighlight(text) {
+    if (!this.editorHighlightEl) return;
+    this.editorHighlightEl.empty();
+    const diagramType = this.getCurrentDiagramType();
+    for (const line of text.split("\n")) {
+      const lineEl = this.editorHighlightEl.createDiv({ cls: "puml-viewer-editor-hl-line" });
+      this.plugin.renderHighlightedLine(lineEl, line, diagramType);
+    }
+    this.syncEditorLineGeometry();
+  }
+  /**
+   * Keeps highlight layer and gutter aligned with the textarea:
+   * - in wrap mode the highlight layer must wrap at the same width (exclude the textarea scrollbar);
+   * - each gutter number takes the height of its (possibly wrapped) source line.
+   */
+  syncEditorLineGeometry() {
+    const editorEl = this.editorEl;
+    const highlightEl = this.editorHighlightEl;
+    const gutterEl = this.editorGutterEl;
+    if (!editorEl || !highlightEl || !gutterEl) return;
+    const wrap = this.plugin.settings.editorWordWrap;
+    const gutterLines = Array.from(gutterEl.children);
+    if (!wrap) {
+      highlightEl.style.removeProperty("padding-right");
+      gutterLines.forEach((lineEl) => lineEl.style.removeProperty("height"));
+      this.syncEditorHighlightScroll();
+      return;
+    }
+    const scrollbarWidth = Math.max(0, editorEl.offsetWidth - editorEl.clientWidth);
+    highlightEl.style.paddingRight = `${12 + scrollbarWidth}px`;
+    const heights = Array.from(highlightEl.children).map(
+      (lineEl) => lineEl.getBoundingClientRect().height
+    );
+    gutterLines.forEach((lineEl, index) => {
+      const height = heights[index];
+      if (height > 0) {
+        lineEl.style.height = `${height}px`;
+      } else {
+        lineEl.style.removeProperty("height");
+      }
+    });
+    this.syncEditorHighlightScroll();
+  }
+  syncEditorHighlightScroll() {
+    if (!this.editorEl || !this.editorHighlightEl) return;
+    this.editorHighlightEl.scrollTop = this.editorEl.scrollTop;
+    this.editorHighlightEl.scrollLeft = this.editorEl.scrollLeft;
   }
   updateEditorLineNumbers(text) {
     if (!this.editorGutterEl) return;
@@ -6085,6 +6641,27 @@ var PUMLViewerSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Auto refresh").setDesc("Automatically re-render diagram when the source file changes.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoRefresh).onChange(async (value) => {
         this.plugin.settings.autoRefresh = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Wrap long lines in editor").setDesc("Wrap long lines in the code editor (edit and split modes) instead of scrolling horizontally.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.editorWordWrap).onChange(async (value) => {
+        this.plugin.settings.editorWordWrap = value;
+        await this.plugin.saveSettings();
+        this.plugin.applyEditorWrapToOpenViews();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Split preview delay").setDesc("Milliseconds to wait after typing stops before the split preview re-renders (150\u20135000).").addText(
+      (text) => text.setPlaceholder("800").setValue(String(this.plugin.settings.previewDelayMs)).onChange(async (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed)) return;
+        this.plugin.settings.previewDelayMs = Math.min(5e3, Math.max(150, parsed));
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Update split preview only on save").setDesc("Do not send drafts to the render server while typing; re-render on save or refresh.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.previewOnSaveOnly).onChange(async (value) => {
+        this.plugin.settings.previewOnSaveOnly = value;
         await this.plugin.saveSettings();
       })
     );

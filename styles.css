@@ -82,6 +82,108 @@
   display: flex;
 }
 
+/* ---------- Split mode: editor | divider | live preview ---------- */
+.puml-viewer-content-host--split {
+  display: flex;
+  flex-direction: row;
+  --puml-split-ratio: 50%;
+}
+
+.puml-viewer-content-host--split.is-stacked {
+  flex-direction: column;
+}
+
+.puml-viewer-content-host--split.is-resizing {
+  user-select: none;
+}
+
+.puml-viewer-split-editor {
+  display: flex;
+  flex: 0 0 var(--puml-split-ratio);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.puml-viewer-split-divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--background-modifier-border);
+}
+
+.puml-viewer-split-divider:hover,
+.puml-viewer-content-host--split.is-resizing .puml-viewer-split-divider {
+  background: var(--interactive-accent);
+}
+
+.puml-viewer-content-host--split.is-stacked .puml-viewer-split-divider {
+  cursor: row-resize;
+}
+
+.puml-viewer-split-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.puml-viewer-split-preview-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.puml-viewer-split-preview-scroll.is-pan-enabled {
+  cursor: grab;
+  user-select: none;
+}
+
+.puml-viewer-split-preview-scroll.is-pan-enabled.is-panning {
+  cursor: grabbing;
+}
+
+/* Rendered off-screen until ready, then swapped in (keeps the last good image visible). */
+.puml-viewer-render-root-pending {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.puml-viewer-preview-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  pointer-events: none;
+}
+
+.puml-viewer-preview-error {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+  padding: 6px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--text-error);
+  background: var(--background-secondary);
+}
+
 .puml-viewer-image {
   display: block;
   max-width: none;
@@ -151,6 +253,82 @@
   border-radius: 0;
 }
 
+.puml-viewer-editor-stack {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Highlight layer and textarea must share identical text metrics. */
+.puml-viewer-editor-stack .puml-viewer-editor,
+.puml-viewer-editor-stack .puml-viewer-editor-highlight {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  padding: 10px 12px;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.5;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.puml-viewer-editor-stack .puml-viewer-editor-highlight {
+  /* Extra bottom/right room so it can scroll as far as the textarea (which has scrollbars). */
+  padding-bottom: 40px;
+  padding-right: 40px;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+.puml-viewer-editor-stack .puml-viewer-editor {
+  z-index: 1;
+  overflow: auto;
+  color: transparent;
+  caret-color: var(--text-normal);
+  background: transparent;
+}
+
+.puml-viewer-editor-stack .puml-viewer-editor::selection {
+  color: transparent;
+  background: var(--text-selection);
+}
+
+/* One block per source line; empty lines keep their height. */
+.puml-viewer-editor-hl-line {
+  min-height: 1.5em;
+}
+
+/* Wrap mode: textarea and highlight layer wrap identically. */
+.puml-viewer-editor-shell.is-wrapping .puml-viewer-editor-stack .puml-viewer-editor,
+.puml-viewer-editor-shell.is-wrapping .puml-viewer-editor-stack .puml-viewer-editor-highlight {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.puml-viewer-editor-shell.is-wrapping .puml-viewer-editor-stack .puml-viewer-editor {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Keep glyph widths identical to the textarea so the caret stays aligned. */
+.puml-viewer-editor-highlight span {
+  font-weight: normal;
+  font-style: normal;
+}
+
 .puml-embed-block {
   position: relative;
   border: none;
@@ -190,6 +368,11 @@
 }
 
 .puml-embed-actions button.is-hidden {
+  display: none;
+}
+
+.markdown-source-view.mod-cm6 .cm-preview-code-block.puml-mermaid-takeover > pre,
+.markdown-source-view.mod-cm6 .cm-preview-code-block.puml-mermaid-takeover > .mermaid {
   display: none;
 }
 
@@ -363,6 +546,15 @@
 
 .theme-dark .puml-code-string {
   color: #86efac;
+}
+
+.puml-code-arrow {
+  color: #be185d;
+  font-weight: 600;
+}
+
+.theme-dark .puml-code-arrow {
+  color: #f472b6;
 }
 
 .puml-code-comment {

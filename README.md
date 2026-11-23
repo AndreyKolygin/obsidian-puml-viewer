@@ -4,29 +4,38 @@ A plugin for Obsidian that renders PlantUML/Mermaid from diagram files and from 
 
 ## Features
 
-- Custom diagram file view (`.puml`, `.mermaid`, `.mmd`, `.marmaid`) with two modes:
+- Custom diagram file view (`.puml`, `.mermaid`, `.mmd`, `.marmaid`) with three modes:
   - `View` (diagram)
-  - `Edit` (source code with line numbers)
-- Diagram toolbar actions:
+  - `Edit` (source code with line numbers and syntax coloring)
+  - `Split` (code editor + live preview side by side)
+- Split mode live preview:
+  - re-renders the unsaved draft after you stop typing (configurable delay)
+  - keeps the last good diagram while updating; shows render errors below it
+  - keeps zoom and scroll between updates; drag-to-pan in the preview
+  - resizable divider (remembered); stacks vertically in narrow panes
+  - optional "update only on save" mode
+- Code editor:
+  - PlantUML and Mermaid syntax coloring
+  - optional line wrapping (`Wrap long lines in editor`)
+- Diagram toolbar actions (only actions available in the current mode are shown):
   - refresh
   - zoom in / reset / zoom out
-  - export buttons (SVG icons) to save as:
-    - `.png`
-    - `.svg`
-    - `.txt` (ASCII Art)
+  - export to `.png`, `.svg`, `.txt` (ASCII Art, PlantUML only)
+  - `Copy block`: copy the file as a ready-to-paste fenced markdown code block
 - Drag-to-pan in diagram view when content is scrollable
 - Auto-fit diagram to viewer width on render
 - Auto-refresh on source file change
 - Startup recovery: reopen and render previously opened diagram file after Obsidian restart
-- Markdown embedded rendering for fenced blocks:
+- Markdown embedded rendering for fenced blocks (Reading view and Live Preview):
   - ` ```plantuml `
-  - ` ```mermaid `
-  - switch between `View Code` and diagram
+  - ` ```mermaid ` (rendered by the plugin instead of the built-in Mermaid renderer)
+  - switch between `Code` and diagram
   - `Zoom` overlay with drag-to-pan and zoom controls
-  - save diagram with format chooser (`Save as PNG` / `Save as SVG`)
+  - `Save` menu: `Save as PNG` / `Save as SVG` / save the code to a `.puml` / `.mmd` file next to the note
+  - `Copy` (code only) and `Copy block` (full fenced block with language and width hint)
   - optional width hint in fence: ` ```plantuml |500 `
   - width hint limits only diagram area; code view uses full available block width
-- PlantUML code coloring in embedded `View Code` mode
+- PlantUML and Mermaid code coloring in embedded `Code` mode
 - Works with:
   - PlantUML server
   - Kroki (`https://kroki.io`)
@@ -62,7 +71,8 @@ Then enable the plugin in **Settings → Community plugins**.
 
 - Open a supported diagram file (`.puml`, `.mermaid`, `.mmd`, `.marmaid`) and run command:
   - `Open current diagram file in viewer`
-- Switch between `View` and `Edit` modes in the toolbar.
+- Switch between `View`, `Edit` and `Split` modes in the toolbar.
+- In `Split` mode the preview follows your edits without saving; `Cmd/Ctrl+S` saves the file.
 
 The dedicated viewer gives you a diagram-first workspace for standalone files, with quick switching back to the editable source when you need to adjust the markup.
 
@@ -105,9 +115,10 @@ Bob -> Alice: hello
 
 - `|500` means max diagram block width in pixels.
 - In rendered block, use:
-  - `View Code` to toggle source/diagram
+  - `Code` to toggle source/diagram
   - `Zoom` to open fullscreen overlay
-  - save icon to choose `PNG` or `SVG`
+  - `Save` to export `PNG` / `SVG` or save the code as a `.puml` / `.mmd` file
+  - `Copy` / `Copy block` to copy the code or the whole fenced block
 
 Rendered markdown blocks stay inside the note preview, which makes them usable for documentation, specs, and presentation notes without opening a separate file.
 
@@ -134,11 +145,17 @@ Export actions are available directly from the rendered block when you need to r
 - `Embedded block default view`: show diagram or code first
 - `Embedded diagram alignment`: `left` / `center` / `right` (default `center`)
   - Applied immediately in markdown preview without Obsidian restart
+- `Wrap long lines in editor`: wrap instead of horizontal scrolling in `Edit` / `Split`
+- `Split preview delay`: milliseconds after typing stops before the preview re-renders (default `800`)
+- `Update split preview only on save`: do not send drafts to the render server while typing
 
 ## Disclosures
 
 - **Network usage**: plugin sends diagram source to the configured render server
   (`PlantUML`, `Kroki`, or `Local`) to generate SVG/PNG/TXT output.
+  Mermaid diagrams are always rendered via the configured Kroki URL.
+  In `Split` mode unsaved drafts are sent while typing unless
+  `Update split preview only on save` is enabled.
 - **Accounts / payments**: not required.
 - **Telemetry / ads**: none.
 - **External file access**: none outside Obsidian vault APIs.

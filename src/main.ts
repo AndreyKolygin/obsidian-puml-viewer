@@ -1314,6 +1314,7 @@ class PUMLViewerView extends ItemView {
     this.imageWrapEl = viewContainer.createDiv({ cls: 'puml-viewer-image-wrap' });
     this.contentHostEl = this.imageWrapEl.createDiv({ cls: 'puml-viewer-content-host' });
     this.bindMainViewPanning();
+    this.bindMainViewZoom();
 
     this.updateToolbarState();
     await this.loadFileFromState();
@@ -2105,6 +2106,27 @@ class PUMLViewerView extends ItemView {
     svgEl.style.maxWidth = CSS_NONE;
     svgEl.style.width = `${Math.max(1, Math.round(baseWidth * this.zoom))}px`;
     svgEl.style.height = CSS_AUTO;
+  }
+
+  private bindMainViewZoom(): void {
+    this.registerDomEvent(this.imageWrapEl, 'wheel', (event: WheelEvent) => {
+      if (!event.ctrlKey || this.mode !== 'view') return;
+      const renderRoot = this.contentHostEl?.querySelector<HTMLElement>('.puml-viewer-render-root');
+      if (!renderRoot) return;
+      event.preventDefault();
+
+      const deltaY = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1);
+      const oldZoom = this.zoom;
+      const rootRect = renderRoot.getBoundingClientRect();
+      const contentX = (event.clientX - rootRect.left) / oldZoom;
+      const contentY = (event.clientY - rootRect.top) / oldZoom;
+
+      this.setZoom(oldZoom * Math.exp(-deltaY * 0.0015));
+
+      const newRect = renderRoot.getBoundingClientRect();
+      this.imageWrapEl.scrollLeft += newRect.left - (event.clientX - contentX * this.zoom);
+      this.imageWrapEl.scrollTop += newRect.top - (event.clientY - contentY * this.zoom);
+    });
   }
 
   private bindMainViewPanning(): void {
